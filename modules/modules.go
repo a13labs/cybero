@@ -71,14 +71,15 @@ func loadModule(pluginPath string) (RestModule, error) {
 // ModuleHandle pass the request to an external module
 func ModuleHandle(w http.ResponseWriter, r *http.Request) error {
 
-	parts := strings.Split(r.URL.Path[1:], "/")
+	// remove /api/ from url and split
+	parts := strings.Split(r.URL.Path[5:], "/")
 
-	if len(parts) < 3 {
+	if len(parts) < 2 {
 		return errors.New("Invalid operation")
 	}
 
 	// Module or action name
-	module := parts[2]
+	module := parts[1]
 
 	switch r.Method {
 	case "GET":
@@ -146,12 +147,6 @@ func moduleInfo(w http.ResponseWriter, r *http.Request) error {
 
 	encoder := json.NewEncoder(w)
 
-	parts := strings.Split(r.URL.Path[1:], "/")
-
-	if len(parts) < 3 {
-		return errors.New("Invalid operation")
-	}
-
 	module := r.URL.Query().Get("module")
 	code, msg := -1, map[string]interface{}{"Error": fmt.Sprintf("Error module does not exits %q\n", module)}
 
@@ -172,12 +167,6 @@ func moduleInfo(w http.ResponseWriter, r *http.Request) error {
 func moduleHelp(w http.ResponseWriter, r *http.Request) error {
 
 	encoder := json.NewEncoder(w)
-
-	parts := strings.Split(r.URL.Path[1:], "/")
-
-	if len(parts) < 3 {
-		return errors.New("Invalid operation")
-	}
 
 	module := r.URL.Query().Get("module")
 	action := r.URL.Query().Get("action")
