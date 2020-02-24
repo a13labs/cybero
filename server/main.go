@@ -11,8 +11,8 @@ import (
 	"time"
 )
 
-// ServiceLogger the global logger
-var ServiceLogger *log.Logger
+// defaultLogger the global logger
+var defaultLogger *log.Logger
 
 var (
 	cyberoConfigFile string
@@ -21,6 +21,7 @@ var (
 	cyberoTCPAddress string
 	cyberoPemFile    string
 	cyberoKeyFile    string
+	cyberoModules    string
 	cyberoUseTLS     bool
 	cyberoUseTCP     bool
 	unixHTTPServer   *core.RestAPIServer
@@ -29,7 +30,7 @@ var (
 
 func gracefullShutdown(quit <-chan os.Signal, done chan<- bool) {
 	<-quit
-	ServiceLogger.Println("Server is shutting down...")
+	defaultLogger.Println("Server is shutting down...")
 
 	if unixHTTPServer != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -37,7 +38,7 @@ func gracefullShutdown(quit <-chan os.Signal, done chan<- bool) {
 
 		unixHTTPServer.HTTPServer.SetKeepAlivesEnabled(false)
 		if err := unixHTTPServer.HTTPServer.Shutdown(ctx); err != nil {
-			ServiceLogger.Fatalf("Could not gracefully shutdown the unix socker server: %v\n", err)
+			defaultLogger.Fatalf("Could not gracefully shutdown the unix socker server: %v\n", err)
 		}
 	}
 
@@ -47,7 +48,7 @@ func gracefullShutdown(quit <-chan os.Signal, done chan<- bool) {
 
 		tcpHTTPServer.HTTPServer.SetKeepAlivesEnabled(false)
 		if err := tcpHTTPServer.HTTPServer.Shutdown(ctx); err != nil {
-			ServiceLogger.Fatalf("Could not gracefully shutdown the TCP server: %v\n", err)
+			defaultLogger.Fatalf("Could not gracefully shutdown the TCP server: %v\n", err)
 		}
 	}
 
@@ -63,9 +64,9 @@ func runServer() {
 	}
 	defer logfile.Close()
 
-	ServiceLogger = log.New(logfile, "", log.LstdFlags)
-	modules.ModulesLogger = ServiceLogger
-	core.ServerLogger = ServiceLogger
+	defaultLogger = log.New(logfile, "", log.LstdFlags)
+	modules.Init(defaultLogger, cyberoConfigFile, cyberoModules)
+	core.ServerLogger = defaultLogger
 
 	done := make(chan bool, 1)
 	quit := make(chan os.Signal, 1)
@@ -77,7 +78,7 @@ func runServer() {
 	unixHTTPServer.APIHandle("module", modules.ModuleHandle)
 
 	if err != nil {
-		ServiceLogger.Printf("Failed to start server on unix socket %q: %v\n", cyberoScktFile, err)
+		defaultLogger.Printf("Failed to start server on unix socket %q: %v\n", cyberoScktFile, err)
 	}
 
 	if cyberoUseTCP {
@@ -91,13 +92,13 @@ func runServer() {
 		}
 
 		if err != nil {
-			ServiceLogger.Printf("Failed to API server address %q: %v\n", ":8888", err)
+			defaultLogger.Printf("Failed to API server address %q: %v\n", ":8888", err)
 		}
 	}
 
 	go gracefullShutdown(quit, done)
 	<-done
-	ServiceLogger.Println("Server gracefull shutdown")
+	defaultLogger.Println("Server gracefull shutdown")
 	os.Remove(cyberoScktFile)
 }
 
@@ -110,7 +111,7 @@ func main() {
 	flag.BoolVar(&cyberoUseTCP, "tcp", true, "Enable TCP connection")
 	flag.StringVar(&cyberoPemFile, "pem", "/etc/cybero/cert.pem", "TLS PEM file")
 	flag.StringVar(&cyberoKeyFile, "key", "/etc/cybero/cert.key", "TLS key file")
-	flag.StringVar(&modules.ModulesLocation, "modules", "/usr/lib/cybero", "Modiles location")
+	flag.StringVar(&cyberoModules, "modules", "/usr/lib/cybero", "Modiles location")
 	flag.Parse()
 	runServer()
 	os.Exit(0)

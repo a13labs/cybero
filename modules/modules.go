@@ -2,6 +2,7 @@ package modules
 
 import (
 	"cybero/core"
+	"cybero/modules/orchestrator"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,58 +15,108 @@ import (
 	"strings"
 )
 
-// RestModule represents a module plugin
-type RestModule interface {
-	Name() string
-	Version() string
-	Info() string
-	Help(action string) string
-	HandleRequest(w http.ResponseWriter, r *http.Request) error
+// defaultPath location to find modukes
+var (
+	defaultPath       = "/usr/lib/cybero"
+	defaultConfigFile = "/etc/cybero/daemon.json"
+	defaultLogger     *log.Logger
+	modulesCache      map[string]interface{}
+)
+
+func getModule(name string) (core.RestModule, error) {
+
+	// Check if we have already the module on the cache
+	moduleImpl, ok := modulesCache[name]
+
+	if !ok {
+		// No module on the cache, try to load it from modules folder
+		module, err := plugin.Open(path.Join(defaultPath, name+".so"))
+
+		if err != nil {
+			defaultLogger.Printf("Error processing module %q: %v\n", name, err)
+			return nil, err
+		}
+
+		_, err = module.Lookup("Name")
+
+		if err != nil {
+			defaultLogger.Printf("Error processing module %q: %v\n", name, err)
+			return nil, err
+		}
+
+		_, err = module.Lookup("Version")
+
+		if err != nil {
+			defaultLogger.Printf("Error processing mod %q: %v\n", name, err)
+			return nil, err
+		}
+
+		symModule, err := module.Lookup("CyberoModule")
+
+		if err != nil {
+			defaultLogger.Printf("Error processing file %q: %v\n", name, err)
+			return nil, err
+		}
+
+		moduleImpl, ok := symModule.(core.RestModule)
+		if !ok {
+			defaultLogger.Printf("Error processing file %q: %v\n", name, err)
+			return nil, err
+		}
+
+		// Initialize plugin with arguments
+		if err = moduleImpl.Init(defaultLogger, defaultConfigFile); err != nil {
+			defaultLogger.Printf("Modules: Error initializing module %q: %v\n", name, err)
+			return nil, err
+		}
+
+		defaultLogger.Printf("Modules: Module loaded and initialized: %v\n", name)
+		modulesCache[name] = moduleImpl
+	}
+
+	restModule := moduleImpl.(core.RestModule)
+	if !restModule.IsInitialized() {
+		restModule.Init(defaultLogger, defaultConfigFile)
+	}
+
+	return restModule, nil
 }
 
-// ModulesLocation location to find modukes
-var ModulesLocation string
+// Init Initialize modules compoment
+func Init(logger *log.Logger, configFile string, path string) {
 
-// ModulesLogger logger for modules
-var ModulesLogger *log.Logger
+	defaultLogger = logger
+	defaultConfigFile = configFile
+	defaultPath = path
 
-func loadModule(pluginPath string) (RestModule, error) {
+	defaultLogger.Printf("Modules: Initializing modules\n")
 
-	module, err := plugin.Open(pluginPath)
-
-	if err != nil {
-		ModulesLogger.Printf("Error processing file %q: %v\n", pluginPath, err)
-		return nil, errors.New("Invalid plugin file")
+	// Initialize modules cache
+	modulesCache = map[string]interface{}{
+		"orchestrator": orchestrator.Module,
 	}
 
-	_, err = module.Lookup("Name")
+	filepath.Walk(defaultPath, func(fPath string, info os.FileInfo, err error) error {
 
-	if err != nil {
-		ModulesLogger.Printf("Error processing file %q: %v\n", pluginPath, err)
-		return nil, errors.New("Invalid plugin file")
-	}
+		if err != nil {
+			defaultLogger.Printf("Modules: Error accessing path %q: %v\n", fPath, err)
+			return nil
+		}
 
-	_, err = module.Lookup("Version")
+		if info.IsDir() {
+			return nil
+		}
 
-	if err != nil {
-		ModulesLogger.Printf("Error processing file %q: %v\n", pluginPath, err)
-		return nil, errors.New("Invalid plugin file")
-	}
+		// Extract module name from filename /xx/xx/module.xxx -> module
+		moduleName := strings.ReplaceAll(filepath.Base(info.Name()), filepath.Ext(info.Name()), "")
 
-	symModule, err := module.Lookup("Module")
+		if _, err := getModule(moduleName); err != nil {
+			defaultLogger.Printf("Modules: Error loading module %q: %v\n", moduleName, err)
+			return err
+		}
 
-	if err != nil {
-		ModulesLogger.Printf("Error processing file %q: %v\n", pluginPath, err)
-		return nil, errors.New("Invalid plugin file")
-	}
-
-	moduleImpl, ok := symModule.(RestModule)
-	if !ok {
-		ModulesLogger.Printf("Error processing file %q: %v\n", pluginPath, err)
-		return nil, errors.New("Invalid plugin file")
-	}
-
-	return moduleImpl, nil
+		return nil
+	})
 }
 
 // ModuleHandle pass the request to an external module
@@ -91,14 +142,14 @@ func ModuleHandle(w http.ResponseWriter, r *http.Request) error {
 		case "help":
 			return moduleHelp(w, r)
 		default:
-			if module, err := loadModule(path.Join(ModulesLocation, module+".so")); err == nil {
+			if module, err := getModule(module); err == nil {
 				return module.HandleRequest(w, r)
 			}
 			return errors.New("Invalid operation")
 		}
 	case "POST":
 	default:
-		if module, err := loadModule(path.Join(ModulesLocation, module+".so")); err == nil {
+		if module, err := getModule(module); err == nil {
 			return module.HandleRequest(w, r)
 		}
 		return errors.New("Invalid operation")
@@ -113,27 +164,13 @@ func listModules(w http.ResponseWriter, r *http.Request) error {
 		map[string]interface{}{"name": "builtin", "version": "-"},
 	}
 
-	filepath.Walk(ModulesLocation, func(fPath string, info os.FileInfo, err error) error {
+	for _, moduleImpl := range modulesCache {
+		module := moduleImpl.(core.RestModule)
+		modules = append(modules, map[string]interface{}{"name": module.Name(), "version": module.Version()})
+	}
 
-		if err != nil {
-			ModulesLogger.Printf("Error accessing path %q: %v\n", fPath, err)
-			return nil
-		}
-
-		if info.IsDir() || filepath.Ext(info.Name()) != "so" {
-			return nil
-		}
-
-		if module, err := loadModule(path.Join(fPath, info.Name())); err == nil {
-			modules = append(modules, map[string]interface{}{"name": module.Name(), "version": module.Version()})
-		}
-
-		return nil
-	})
-
-	// If we arrive here means something went wrong
 	encoder := json.NewEncoder(w)
-	code, msg := -1, map[string]interface{}{"modules": modules}
+	code, msg := 0, map[string]interface{}{"modules": modules}
 
 	encoder.Encode(core.RestAPIResponse{
 		"Status":   code,
@@ -152,7 +189,7 @@ func moduleInfo(w http.ResponseWriter, r *http.Request) error {
 
 	if module == "" {
 		code, msg = 0, map[string]interface{}{"Info": fmt.Sprintf("Builtin module, contains builtin functions to handle modules.\n")}
-	} else if module, err := loadModule(path.Join(ModulesLocation, module+".so")); err == nil {
+	} else if module, err := getModule(module); err == nil {
 		code, msg = 0, map[string]interface{}{"Info": module.Info()}
 	}
 
@@ -182,7 +219,7 @@ func moduleHelp(w http.ResponseWriter, r *http.Request) error {
 			code, msg = 0, map[string]interface{}{"Help": "Returns information about a specific module"}
 		}
 
-	} else if module, err := loadModule(path.Join(ModulesLocation, module+".so")); err == nil {
+	} else if module, err := getModule(module); err == nil {
 		code, msg = 0, map[string]interface{}{"Help": module.Help(action)}
 	}
 
