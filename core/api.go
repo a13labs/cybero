@@ -1,3 +1,17 @@
+// Copyright 2020 Alexandre Pires (c.alexandre.pires@gmail.com)
+
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+
+// 	http://www.apache.org/licenses/LICENSE-2.0
+
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package core
 
 import (
@@ -20,8 +34,10 @@ var (
 	defaultConfigFile = "/etc/cybero/daemon.json"
 	defaultLogger     *log.Logger
 	modulesCache      map[string]interface{}
+	apiActions        map[string]RestAPIHandler
 )
 
+// getModule Get module based on name
 func getModule(name string) (RestModule, error) {
 
 	// Check if we have already the module on the cache
@@ -81,6 +97,82 @@ func getModule(name string) (RestModule, error) {
 	return restModule, nil
 }
 
+// listAction Send a list of available modules
+func listAction(w http.ResponseWriter, r *http.Request) error {
+
+	modules := []map[string]interface{}{
+		map[string]interface{}{"name": "builtin", "version": "-"},
+	}
+
+	for _, moduleImpl := range modulesCache {
+		module := moduleImpl.(RestModule)
+		modules = append(modules, map[string]interface{}{"name": module.Name(), "version": module.Version()})
+	}
+
+	encoder := json.NewEncoder(w)
+	code, msg := 0, map[string]interface{}{"modules": modules}
+
+	encoder.Encode(RestAPIResponse{
+		"Status":   code,
+		"Response": msg,
+	})
+
+	return nil
+}
+
+// infoAction Send information about a specific module
+func infoAction(w http.ResponseWriter, r *http.Request) error {
+
+	encoder := json.NewEncoder(w)
+
+	module := r.URL.Query().Get("module")
+	code, msg := -1, map[string]interface{}{"Error": fmt.Sprintf("Error module does not exits %q\n", module)}
+
+	if module == "" {
+		code, msg = 0, map[string]interface{}{"Info": fmt.Sprintf("Builtin module, contains builtin functions to handle modules.\n")}
+	} else if module, err := getModule(module); err == nil {
+		code, msg = 0, map[string]interface{}{"Info": module.Info()}
+	}
+
+	encoder.Encode(RestAPIResponse{
+		"Status":   code,
+		"Response": msg,
+	})
+
+	return nil
+}
+
+// helpAction Send help about a specific module
+func helpAction(w http.ResponseWriter, r *http.Request) error {
+
+	encoder := json.NewEncoder(w)
+
+	module := r.URL.Query().Get("module")
+	action := r.URL.Query().Get("action")
+	code, msg := -1, map[string]interface{}{"Error": fmt.Sprintf("Error module or action does not exits %q\n", module)}
+
+	if module == "" {
+
+		if action == "list" {
+			code, msg = 0, map[string]interface{}{"Help": "Returns a list of available modules"}
+		}
+
+		if action == "info" {
+			code, msg = 0, map[string]interface{}{"Help": "Returns information about a specific module"}
+		}
+
+	} else if module, err := getModule(module); err == nil {
+		code, msg = 0, map[string]interface{}{"Help": module.Help(action)}
+	}
+
+	encoder.Encode(RestAPIResponse{
+		"Status":   code,
+		"Response": msg,
+	})
+
+	return nil
+}
+
 // InitializeAPI Initialize modules compoment
 func InitializeAPI(logger *log.Logger, configFile string, path string) {
 
@@ -116,6 +208,12 @@ func InitializeAPI(logger *log.Logger, configFile string, path string) {
 
 		return nil
 	})
+
+	apiActions = map[string]RestAPIHandler{
+		"list": listAction,
+		"info": infoAction,
+		"help": helpAction,
+	}
 }
 
 // HandleRequest pass the request to an external module
@@ -128,103 +226,17 @@ func HandleRequest(w http.ResponseWriter, r *http.Request) error {
 		return errors.New("No module called")
 	}
 
-	module := parts[0]
+	// Check if it is an internal action
+	if action, ok := apiActions[parts[0]]; ok {
+		defaultLogger.Printf("API builtin action called %q", parts[0])
+		return action(w, r)
+	}
 
-	switch r.Method {
-	case "GET":
-		switch module {
-		case "list":
-			return listModules(w, r)
-		case "info":
-			return moduleInfo(w, r)
-		case "help":
-			return moduleHelp(w, r)
-		default:
-			if module, err := getModule(module); err == nil {
-				return module.HandleRequest(w, r)
-			}
-			return errors.New("Invalid operation")
-		}
-	case "POST":
-	default:
-		if module, err := getModule(module); err == nil {
-			return module.HandleRequest(w, r)
-		}
-		return errors.New("Invalid operation")
+	// Check if is an action related to a module
+	if module, err := getModule(parts[0]); err == nil {
+		defaultLogger.Printf("API  module %q called", parts[0])
+		return module.HandleRequest(w, r)
 	}
 
 	return errors.New("Invalid operation")
-}
-
-func listModules(w http.ResponseWriter, r *http.Request) error {
-
-	modules := []map[string]interface{}{
-		map[string]interface{}{"name": "builtin", "version": "-"},
-	}
-
-	for _, moduleImpl := range modulesCache {
-		module := moduleImpl.(RestModule)
-		modules = append(modules, map[string]interface{}{"name": module.Name(), "version": module.Version()})
-	}
-
-	encoder := json.NewEncoder(w)
-	code, msg := 0, map[string]interface{}{"modules": modules}
-
-	encoder.Encode(RestAPIResponse{
-		"Status":   code,
-		"Response": msg,
-	})
-
-	return nil
-}
-
-func moduleInfo(w http.ResponseWriter, r *http.Request) error {
-
-	encoder := json.NewEncoder(w)
-
-	module := r.URL.Query().Get("module")
-	code, msg := -1, map[string]interface{}{"Error": fmt.Sprintf("Error module does not exits %q\n", module)}
-
-	if module == "" {
-		code, msg = 0, map[string]interface{}{"Info": fmt.Sprintf("Builtin module, contains builtin functions to handle modules.\n")}
-	} else if module, err := getModule(module); err == nil {
-		code, msg = 0, map[string]interface{}{"Info": module.Info()}
-	}
-
-	encoder.Encode(RestAPIResponse{
-		"Status":   code,
-		"Response": msg,
-	})
-
-	return nil
-}
-
-func moduleHelp(w http.ResponseWriter, r *http.Request) error {
-
-	encoder := json.NewEncoder(w)
-
-	module := r.URL.Query().Get("module")
-	action := r.URL.Query().Get("action")
-	code, msg := -1, map[string]interface{}{"Error": fmt.Sprintf("Error module or action does not exits %q\n", module)}
-
-	if module == "" {
-
-		if action == "list" {
-			code, msg = 0, map[string]interface{}{"Help": "Returns a list of available modules"}
-		}
-
-		if action == "info" {
-			code, msg = 0, map[string]interface{}{"Help": "Returns information about a specific module"}
-		}
-
-	} else if module, err := getModule(module); err == nil {
-		code, msg = 0, map[string]interface{}{"Help": module.Help(action)}
-	}
-
-	encoder.Encode(RestAPIResponse{
-		"Status":   code,
-		"Response": msg,
-	})
-
-	return nil
 }
