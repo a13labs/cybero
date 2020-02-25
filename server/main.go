@@ -3,8 +3,8 @@ package main
 import (
 	"context"
 	"cybero/core"
-	"cybero/modules"
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -29,6 +29,7 @@ var (
 )
 
 func gracefullShutdown(quit <-chan os.Signal, done chan<- bool) {
+	// Do a gracefull shutdown of the server
 	<-quit
 	defaultLogger.Println("Server is shutting down...")
 
@@ -57,42 +58,44 @@ func gracefullShutdown(quit <-chan os.Signal, done chan<- bool) {
 
 func runServer() {
 
+	// Initialize logging to a file
 	logfile, err := os.OpenFile(cyberoLogfile,
 		os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		log.Println(err)
 	}
 	defer logfile.Close()
-
 	defaultLogger = log.New(logfile, "", log.LstdFlags)
-	modules.Init(defaultLogger, cyberoConfigFile, cyberoModules)
-	core.ServerLogger = defaultLogger
 
+	// Setup os signal catch
 	done := make(chan bool, 1)
 	quit := make(chan os.Signal, 1)
-
 	signal.Notify(quit, os.Interrupt)
 
+	// Setup API Server on unix socket
 	unixHTTPServer := core.RestAPIServer{}
-	err = unixHTTPServer.ListenUnixSocket(cyberoScktFile)
-	unixHTTPServer.APIHandle("module", modules.ModuleHandle)
-
-	if err != nil {
-		defaultLogger.Printf("Failed to start server on unix socket %q: %v\n", cyberoScktFile, err)
+	if unixHTTPServer.Init(defaultLogger, cyberoConfigFile, cyberoModules) == nil {
+		if unixHTTPServer.ListenUnixSocket(cyberoScktFile) != nil {
+			defaultLogger.Printf("Failed to bind server on unix socket %q: %v\n", cyberoScktFile, err)
+		}
+	} else {
+		defaultLogger.Printf("Failed to initialize server on unix socket %q: %v\n", cyberoScktFile, err)
 	}
 
+	// Setup API Server on tcp socket if enabled
 	if cyberoUseTCP {
 		tcpHTTPServer := core.RestAPIServer{}
-		tcpHTTPServer.APIHandle("module", modules.ModuleHandle)
-
-		if cyberoUseTLS {
-			err = tcpHTTPServer.ListenTCPSocketTLS(cyberoTCPAddress, cyberoPemFile, cyberoKeyFile)
+		if tcpHTTPServer.Init(defaultLogger, cyberoConfigFile, cyberoModules) == nil {
+			if cyberoUseTLS {
+				// We have TLS enable, setup a secure socket, otherwise a non encrypted socket
+				if tcpHTTPServer.ListenTCPSocketTLS(cyberoTCPAddress, cyberoPemFile, cyberoKeyFile) != nil {
+					defaultLogger.Printf("Failed to bind server on tcp secure socket %q: %v\n", cyberoScktFile, err)
+				}
+			} else if tcpHTTPServer.ListenTCPSocket(cyberoTCPAddress) != nil {
+				defaultLogger.Printf("Failed to bind server on tcp socket %q: %v\n", cyberoScktFile, err)
+			}
 		} else {
-			err = tcpHTTPServer.ListenTCPSocket(cyberoTCPAddress)
-		}
-
-		if err != nil {
-			defaultLogger.Printf("Failed to API server address %q: %v\n", ":8888", err)
+			defaultLogger.Printf("Failed to initialize server on unix socket %q: %v\n", cyberoScktFile, err)
 		}
 	}
 
@@ -103,6 +106,7 @@ func runServer() {
 }
 
 func main() {
+	fmt.Println("Cybero - modular API server, developed by Alexandre Pires (c.alexandre.pires@gmail.com) (2020)")
 	flag.StringVar(&cyberoLogfile, "logfile", "/var/log/cybero-server.log", "Log file name")
 	flag.StringVar(&cyberoConfigFile, "config", "/etc/cybero/daemon.json", "Service config file")
 	flag.StringVar(&cyberoScktFile, "unix", "/var/run/cybero.socket", "Unix socket file")

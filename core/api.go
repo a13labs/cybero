@@ -1,8 +1,7 @@
-package modules
+package core
 
 import (
-	"cybero/core"
-	"cybero/modules/orchestrator"
+	"cybero/api/orchestrator"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -23,7 +22,7 @@ var (
 	modulesCache      map[string]interface{}
 )
 
-func getModule(name string) (core.RestModule, error) {
+func getModule(name string) (RestModule, error) {
 
 	// Check if we have already the module on the cache
 	moduleImpl, ok := modulesCache[name]
@@ -58,7 +57,7 @@ func getModule(name string) (core.RestModule, error) {
 			return nil, err
 		}
 
-		moduleImpl, ok := symModule.(core.RestModule)
+		moduleImpl, ok := symModule.(RestModule)
 		if !ok {
 			defaultLogger.Printf("Error processing file %q: %v\n", name, err)
 			return nil, err
@@ -66,15 +65,15 @@ func getModule(name string) (core.RestModule, error) {
 
 		// Initialize plugin with arguments
 		if err = moduleImpl.Init(defaultLogger, defaultConfigFile); err != nil {
-			defaultLogger.Printf("Modules: Error initializing module %q: %v\n", name, err)
+			defaultLogger.Printf("API: Error initializing module %q: %v\n", name, err)
 			return nil, err
 		}
 
-		defaultLogger.Printf("Modules: Module loaded and initialized: %v\n", name)
+		defaultLogger.Printf("API: Module loaded and initialized: %v\n", name)
 		modulesCache[name] = moduleImpl
 	}
 
-	restModule := moduleImpl.(core.RestModule)
+	restModule := moduleImpl.(RestModule)
 	if !restModule.IsInitialized() {
 		restModule.Init(defaultLogger, defaultConfigFile)
 	}
@@ -82,14 +81,14 @@ func getModule(name string) (core.RestModule, error) {
 	return restModule, nil
 }
 
-// Init Initialize modules compoment
-func Init(logger *log.Logger, configFile string, path string) {
+// InitializeAPI Initialize modules compoment
+func InitializeAPI(logger *log.Logger, configFile string, path string) {
 
 	defaultLogger = logger
 	defaultConfigFile = configFile
 	defaultPath = path
 
-	defaultLogger.Printf("Modules: Initializing modules\n")
+	defaultLogger.Printf("API: Initializing modules\n")
 
 	// Initialize modules cache
 	modulesCache = map[string]interface{}{
@@ -99,7 +98,7 @@ func Init(logger *log.Logger, configFile string, path string) {
 	filepath.Walk(defaultPath, func(fPath string, info os.FileInfo, err error) error {
 
 		if err != nil {
-			defaultLogger.Printf("Modules: Error accessing path %q: %v\n", fPath, err)
+			defaultLogger.Printf("API: Error accessing path %q: %v\n", fPath, err)
 			return nil
 		}
 
@@ -111,7 +110,7 @@ func Init(logger *log.Logger, configFile string, path string) {
 		moduleName := strings.ReplaceAll(filepath.Base(info.Name()), filepath.Ext(info.Name()), "")
 
 		if _, err := getModule(moduleName); err != nil {
-			defaultLogger.Printf("Modules: Error loading module %q: %v\n", moduleName, err)
+			defaultLogger.Printf("API: Error loading module %q: %v\n", moduleName, err)
 			return err
 		}
 
@@ -119,18 +118,17 @@ func Init(logger *log.Logger, configFile string, path string) {
 	})
 }
 
-// ModuleHandle pass the request to an external module
-func ModuleHandle(w http.ResponseWriter, r *http.Request) error {
+// HandleRequest pass the request to an external module
+func HandleRequest(w http.ResponseWriter, r *http.Request) error {
 
 	// remove /api/ from url and split
 	parts := strings.Split(r.URL.Path[5:], "/")
 
-	if len(parts) < 2 {
-		return errors.New("Invalid operation")
+	if len(parts) == 0 {
+		return errors.New("No module called")
 	}
 
-	// Module or action name
-	module := parts[1]
+	module := parts[0]
 
 	switch r.Method {
 	case "GET":
@@ -165,14 +163,14 @@ func listModules(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	for _, moduleImpl := range modulesCache {
-		module := moduleImpl.(core.RestModule)
+		module := moduleImpl.(RestModule)
 		modules = append(modules, map[string]interface{}{"name": module.Name(), "version": module.Version()})
 	}
 
 	encoder := json.NewEncoder(w)
 	code, msg := 0, map[string]interface{}{"modules": modules}
 
-	encoder.Encode(core.RestAPIResponse{
+	encoder.Encode(RestAPIResponse{
 		"Status":   code,
 		"Response": msg,
 	})
@@ -193,7 +191,7 @@ func moduleInfo(w http.ResponseWriter, r *http.Request) error {
 		code, msg = 0, map[string]interface{}{"Info": module.Info()}
 	}
 
-	encoder.Encode(core.RestAPIResponse{
+	encoder.Encode(RestAPIResponse{
 		"Status":   code,
 		"Response": msg,
 	})
@@ -223,7 +221,7 @@ func moduleHelp(w http.ResponseWriter, r *http.Request) error {
 		code, msg = 0, map[string]interface{}{"Help": module.Help(action)}
 	}
 
-	encoder.Encode(core.RestAPIResponse{
+	encoder.Encode(RestAPIResponse{
 		"Status":   code,
 		"Response": msg,
 	})
