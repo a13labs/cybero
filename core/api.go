@@ -15,7 +15,7 @@
 package core
 
 import (
-	"cybero/definitions"
+	"cybero/types"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -36,13 +36,13 @@ var (
 
 // API location to find modukes
 type API struct {
-	apiConfig  definitions.RestAPIModulesConfig
+	apiConfig  types.RestAPIModulesConfig
 	apiModules map[string]interface{}
-	apiActions map[string]definitions.RestAPIHandler
+	apiActions map[string]types.RestAPIHandler
 }
 
 // getModule Get module based on name
-func (api *API) getModule(name string) (definitions.RestAPIModule, error) {
+func (api *API) getModule(name string) (types.RestAPIModule, error) {
 
 	// Check if we have already the module on the cache
 	moduleImpl, ok := api.apiModules[name]
@@ -51,7 +51,7 @@ func (api *API) getModule(name string) (definitions.RestAPIModule, error) {
 		return nil, errors.New("Module not registered")
 	}
 
-	return moduleImpl.(definitions.RestAPIModule), nil
+	return moduleImpl.(types.RestAPIModule), nil
 }
 
 // listAction Send a list of available modules
@@ -62,14 +62,14 @@ func (api *API) listAction(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	for _, moduleImpl := range api.apiModules {
-		module := moduleImpl.(definitions.RestAPIModule)
+		module := moduleImpl.(types.RestAPIModule)
 		modules = append(modules, map[string]interface{}{"name": module.Name(), "version": module.Version()})
 	}
 
 	encoder := json.NewEncoder(w)
 	code, msg := 0, map[string]interface{}{"modules": modules}
 
-	encoder.Encode(definitions.RestAPIResponse{
+	encoder.Encode(types.RestAPIResponse{
 		"Status":   code,
 		"Response": msg,
 	})
@@ -91,7 +91,7 @@ func (api *API) infoAction(w http.ResponseWriter, r *http.Request) error {
 		code, msg = 0, map[string]interface{}{"Info": module.Info()}
 	}
 
-	encoder.Encode(definitions.RestAPIResponse{
+	encoder.Encode(types.RestAPIResponse{
 		"Status":   code,
 		"Response": msg,
 	})
@@ -122,7 +122,7 @@ func (api *API) helpAction(w http.ResponseWriter, r *http.Request) error {
 		code, msg = 0, map[string]interface{}{"Help": module.Help(action)}
 	}
 
-	encoder.Encode(definitions.RestAPIResponse{
+	encoder.Encode(types.RestAPIResponse{
 		"Status":   code,
 		"Response": msg,
 	})
@@ -131,7 +131,7 @@ func (api *API) helpAction(w http.ResponseWriter, r *http.Request) error {
 }
 
 // Initialize Initialize modules compoment
-func (api *API) Initialize(logger *log.Logger, config *definitions.RestAPIConfig) {
+func (api *API) Initialize(logger *log.Logger, config *types.RestAPIConfig) {
 
 	apiLogger = logger
 	api.apiConfig = config.Modules
@@ -170,7 +170,7 @@ func (api *API) Initialize(logger *log.Logger, config *definitions.RestAPIConfig
 			return err
 		}
 
-		moduleImpl, ok := symModule.(definitions.RestAPIModule)
+		moduleImpl, ok := symModule.(types.RestAPIModule)
 		if !ok {
 			apiLogger.Printf("Error processing file %q: %v\n", name, err)
 			return err
@@ -200,7 +200,7 @@ func (api *API) Initialize(logger *log.Logger, config *definitions.RestAPIConfig
 		return nil
 	})
 
-	api.apiActions = map[string]definitions.RestAPIHandler{
+	api.apiActions = map[string]types.RestAPIHandler{
 		"list": api.listAction,
 		"info": api.infoAction,
 		"help": api.helpAction,

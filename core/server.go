@@ -17,7 +17,7 @@ package core
 import (
 	"context"
 	"crypto/tls"
-	"cybero/definitions"
+	"cybero/types"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -34,9 +34,9 @@ var serverLogger *log.Logger
 
 // RestAPIServer A simple RestAPI server
 type RestAPIServer struct {
-	serverEndpoints  definitions.RestAPIEndpoints
+	serverEndpoints  types.RestAPIEndpoints
 	httpServer       *http.Server
-	serverConfig     *definitions.RestAPIConfig
+	serverConfig     *types.RestAPIConfig
 	serverConfigFile string
 	serverLogfile    *os.File
 }
@@ -66,7 +66,7 @@ func (rest *RestAPIServer) Initialize() error {
 
 	var err error
 
-	rest.serverConfig = &definitions.RestAPIConfig{}
+	rest.serverConfig = &types.RestAPIConfig{}
 
 	// Try to load configuration from arguments
 	flag.StringVar(&rest.serverConfigFile, "config", "", "Service config file")
@@ -138,9 +138,9 @@ func (rest *RestAPIServer) Initialize() error {
 }
 
 // APIHandler Add a new handler
-func (rest *RestAPIServer) APIHandler(url string, handler definitions.RestAPIHandler) {
+func (rest *RestAPIServer) APIHandler(url string, handler types.RestAPIHandler) {
 	if rest.serverEndpoints == nil {
-		rest.serverEndpoints = definitions.RestAPIEndpoints{}
+		rest.serverEndpoints = types.RestAPIEndpoints{}
 	}
 	rest.serverEndpoints[url] = handler
 }
@@ -165,7 +165,7 @@ func (rest *RestAPIServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	encoder := json.NewEncoder(w)
 	code, msg := -1, map[string]interface{}{"Error": fmt.Sprintf("Error, processing request\n")}
 
-	encoder.Encode(definitions.RestAPIResponse{
+	encoder.Encode(types.RestAPIResponse{
 		"Status":   code,
 		"Response": msg,
 	})

@@ -16,7 +16,7 @@ package main
 
 import (
 	"context"
-	"cybero/definitions"
+	"cybero/types"
 	"errors"
 	"fmt"
 	"io"
@@ -34,7 +34,7 @@ import (
 )
 
 type orchestratorModule struct {
-	definitions.RestAPIModule
+	types.RestAPIModule
 }
 
 // ContainerInfo container information
