@@ -48,6 +48,8 @@ func (auth *Auth) refreshAction(w http.ResponseWriter, r *http.Request) error {
 // Initialize initialize the the security auth
 func (auth *Auth) Initialize(logger *log.Logger, config *types.RestAPIConfig) error {
 
+	var ok bool
+
 	authLogger = logger
 	auth.authConfig = config.Auth
 	providerFile := path.Join(auth.authConfig.Path, auth.authConfig.Provider+".so")
@@ -65,19 +67,19 @@ func (auth *Auth) Initialize(logger *log.Logger, config *types.RestAPIConfig) er
 		return err
 	}
 
-	authProvider, ok := symModule.(types.RestAPIAuthProvider)
+	auth.authProvider, ok = symModule.(types.RestAPIAuthProvider)
 	if !ok {
 		authLogger.Printf("Auth: Error processing file %q: %v\n", auth.authConfig.Provider, err)
 		return err
 	}
 
 	// Initialize plugin with arguments
-	if err = authProvider.Initialize(authLogger, auth.authConfig.Config); err != nil {
+	if err = auth.authProvider.Initialize(authLogger, auth.authConfig.Config); err != nil {
 		authLogger.Printf("Auth: Error initializing provider %q: %v\n", auth.authConfig.Provider, err)
 		return err
 	}
 
-	authLogger.Printf("Auth: Provider loaded and initialized: %v\n", auth.authConfig.Provider)
+	authLogger.Printf("Auth: Provider loaded and initialized: %q, version: %q\n", auth.authProvider.Name(), auth.authProvider.Version())
 
 	auth.authActions = map[string]types.RestAPIHandler{
 		"signin":  auth.signinAction,

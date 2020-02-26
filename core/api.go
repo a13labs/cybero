@@ -194,7 +194,7 @@ func (api *API) Initialize(logger *log.Logger, config *types.RestAPIConfig) {
 			return err
 		}
 
-		apiLogger.Printf("API: Module loaded and initialized: %v\n", name)
+		apiLogger.Printf("API: Module loaded and initialized: %q, version: %q\n", moduleImpl.Name(), moduleImpl.Version())
 		api.apiModules[name] = moduleImpl
 
 		return nil
