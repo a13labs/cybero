@@ -17,6 +17,7 @@ package core
 import (
 	"context"
 	"crypto/tls"
+	"cybero/definitions"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -33,9 +34,9 @@ var serverLogger *log.Logger
 
 // RestAPIServer A simple RestAPI server
 type RestAPIServer struct {
-	serverEndpoints  RestAPIEndpoints
+	serverEndpoints  definitions.RestAPIEndpoints
 	httpServer       *http.Server
-	serverConfig     *RestAPIConfig
+	serverConfig     *definitions.RestAPIConfig
 	serverConfigFile string
 	serverLogfile    *os.File
 }
@@ -65,7 +66,7 @@ func (rest *RestAPIServer) Initialize() error {
 
 	var err error
 
-	rest.serverConfig = &RestAPIConfig{}
+	rest.serverConfig = &definitions.RestAPIConfig{}
 
 	// Try to load configuration from arguments
 	flag.StringVar(&rest.serverConfigFile, "config", "", "Service config file")
@@ -74,7 +75,7 @@ func (rest *RestAPIServer) Initialize() error {
 	flag.BoolVar(&rest.serverConfig.TLS, "tls", false, "Use TLS encryption")
 	flag.StringVar(&rest.serverConfig.CertPEM, "pem", "", "TLS PEM file")
 	flag.StringVar(&rest.serverConfig.CertKey, "key", "", "TLS key file")
-	flag.StringVar(&rest.serverConfig.Modules, "modules", "", "Modiles location")
+	flag.StringVar(&rest.serverConfig.Modules.Path, "modules", "", "Modiles location")
 	flag.Parse()
 
 	// load configuration file
@@ -137,9 +138,9 @@ func (rest *RestAPIServer) Initialize() error {
 }
 
 // APIHandler Add a new handler
-func (rest *RestAPIServer) APIHandler(url string, handler RestAPIHandler) {
+func (rest *RestAPIServer) APIHandler(url string, handler definitions.RestAPIHandler) {
 	if rest.serverEndpoints == nil {
-		rest.serverEndpoints = RestAPIEndpoints{}
+		rest.serverEndpoints = definitions.RestAPIEndpoints{}
 	}
 	rest.serverEndpoints[url] = handler
 }
@@ -164,7 +165,7 @@ func (rest *RestAPIServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	encoder := json.NewEncoder(w)
 	code, msg := -1, map[string]interface{}{"Error": fmt.Sprintf("Error, processing request\n")}
 
-	encoder.Encode(RestAPIResponse{
+	encoder.Encode(definitions.RestAPIResponse{
 		"Status":   code,
 		"Response": msg,
 	})

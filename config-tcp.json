@@ -1,6 +1,20 @@
 {
     "socket": "tcp://127.0.0.1:8888",
     "tls": false,
-    "modules": "/home/alexandre/modules",
+    "modules": {
+        "path": "/home/alexandre/modules",
+        "configs" : {
+            "orchestrator" : {
+                "enabled" : false,
+                "config" : {}
+            }
+        }
+    },
+    "auth": {
+        "path": "/home/alexandre/provider",
+        "provider": "fileauth",
+        "config": {},
+        "secret":  "RDExM3BFQHhoR1EjVllwbkp5dW5hOTkqcGkjQkRMU2xBYWZpTCV0OXBKd1hJWjFtajA2XnRkVWQqV3hZMlVqSwo="
+    },
     "logfile": "/home/alexandre/restserver.log"
 }

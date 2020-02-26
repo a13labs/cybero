@@ -1,6 +1,20 @@
 {
     "socket": "unix:///home/alexandre/restserver.socket",
     "tls": false,
-    "modules": "/home/alexandre/modules",
+    "modules": {
+        "path": "/home/alexandre/modules",
+        "configs" : {
+            "orchestrator" : {
+                "enabled" : true,
+                "config" : {}
+            }
+        }
+    },
+    "auth": {
+        "path": "/home/alexandre/provider",
+        "provider": "fileauth",
+        "config": {},
+        "secret":  "RDExM3BFQHhoR1EjVllwbkp5dW5hOTkqcGkjQkRMU2xBYWZpTCV0OXBKd1hJWjFtajA2XnRkVWQqV3hZMlVqSwo="
+    },
     "logfile": "/home/alexandre/restserver.log"
 }

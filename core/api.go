@@ -15,7 +15,7 @@
 package core
 
 import (
-	"cybero/api/orchestrator"
+	"cybero/definitions"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -36,70 +36,22 @@ var (
 
 // API location to find modukes
 type API struct {
-	apiModulesPath  string
-	apiModuleConfig map[string]interface{}
-	apiModules      map[string]interface{}
-	apiActions      map[string]RestAPIHandler
+	apiConfig  definitions.RestAPIModulesConfig
+	apiModules map[string]interface{}
+	apiActions map[string]definitions.RestAPIHandler
 }
 
 // getModule Get module based on name
-func (api *API) getModule(name string) (RestModule, error) {
+func (api *API) getModule(name string) (definitions.RestAPIModule, error) {
 
 	// Check if we have already the module on the cache
 	moduleImpl, ok := api.apiModules[name]
 
 	if !ok {
-		// No module on the cache, try to load it from modules folder
-		module, err := plugin.Open(path.Join(api.apiModulesPath, name+".so"))
-
-		if err != nil {
-			apiLogger.Printf("Error processing module %q: %v\n", name, err)
-			return nil, err
-		}
-
-		_, err = module.Lookup("Name")
-
-		if err != nil {
-			apiLogger.Printf("Error processing module %q: %v\n", name, err)
-			return nil, err
-		}
-
-		_, err = module.Lookup("Version")
-
-		if err != nil {
-			apiLogger.Printf("Error processing mod %q: %v\n", name, err)
-			return nil, err
-		}
-
-		symModule, err := module.Lookup("CyberoModule")
-
-		if err != nil {
-			apiLogger.Printf("Error processing file %q: %v\n", name, err)
-			return nil, err
-		}
-
-		moduleImpl, ok := symModule.(RestModule)
-		if !ok {
-			apiLogger.Printf("Error processing file %q: %v\n", name, err)
-			return nil, err
-		}
-
-		// Initialize plugin with arguments
-		if err = moduleImpl.Initialize(apiLogger, api.apiModuleConfig); err != nil {
-			apiLogger.Printf("API: Error initializing module %q: %v\n", name, err)
-			return nil, err
-		}
-
-		apiLogger.Printf("API: Module loaded and initialized: %v\n", name)
-		api.apiModules[name] = moduleImpl
+		return nil, errors.New("Module not registered")
 	}
 
-	restModule := moduleImpl.(RestModule)
-	if !restModule.IsInitialized() {
-		restModule.Initialize(apiLogger, api.apiModuleConfig)
-	}
-
-	return restModule, nil
+	return moduleImpl.(definitions.RestAPIModule), nil
 }
 
 // listAction Send a list of available modules
@@ -110,14 +62,14 @@ func (api *API) listAction(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	for _, moduleImpl := range api.apiModules {
-		module := moduleImpl.(RestModule)
+		module := moduleImpl.(definitions.RestAPIModule)
 		modules = append(modules, map[string]interface{}{"name": module.Name(), "version": module.Version()})
 	}
 
 	encoder := json.NewEncoder(w)
 	code, msg := 0, map[string]interface{}{"modules": modules}
 
-	encoder.Encode(RestAPIResponse{
+	encoder.Encode(definitions.RestAPIResponse{
 		"Status":   code,
 		"Response": msg,
 	})
@@ -139,7 +91,7 @@ func (api *API) infoAction(w http.ResponseWriter, r *http.Request) error {
 		code, msg = 0, map[string]interface{}{"Info": module.Info()}
 	}
 
-	encoder.Encode(RestAPIResponse{
+	encoder.Encode(definitions.RestAPIResponse{
 		"Status":   code,
 		"Response": msg,
 	})
@@ -170,7 +122,7 @@ func (api *API) helpAction(w http.ResponseWriter, r *http.Request) error {
 		code, msg = 0, map[string]interface{}{"Help": module.Help(action)}
 	}
 
-	encoder.Encode(RestAPIResponse{
+	encoder.Encode(definitions.RestAPIResponse{
 		"Status":   code,
 		"Response": msg,
 	})
@@ -179,20 +131,17 @@ func (api *API) helpAction(w http.ResponseWriter, r *http.Request) error {
 }
 
 // Initialize Initialize modules compoment
-func (api *API) Initialize(logger *log.Logger, config *RestAPIConfig) {
+func (api *API) Initialize(logger *log.Logger, config *definitions.RestAPIConfig) {
 
 	apiLogger = logger
-	api.apiModuleConfig = config.ModulesConfiguration
-	api.apiModulesPath = config.Modules
+	api.apiConfig = config.Modules
 
 	apiLogger.Printf("API: Initializing modules\n")
 
 	// Initialize modules cache
-	api.apiModules = map[string]interface{}{
-		"orchestrator": orchestrator.Module,
-	}
+	api.apiModules = make(map[string]interface{})
 
-	filepath.Walk(api.apiModulesPath, func(fPath string, info os.FileInfo, err error) error {
+	filepath.Walk(api.apiConfig.Path, func(fPath string, info os.FileInfo, err error) error {
 
 		if err != nil {
 			apiLogger.Printf("API: Error accessing path %q: %v\n", fPath, err)
@@ -204,17 +153,54 @@ func (api *API) Initialize(logger *log.Logger, config *RestAPIConfig) {
 		}
 
 		// Extract module name from filename /xx/xx/module.xxx -> module
-		moduleName := strings.ReplaceAll(filepath.Base(info.Name()), filepath.Ext(info.Name()), "")
+		name := strings.ReplaceAll(filepath.Base(info.Name()), filepath.Ext(info.Name()), "")
 
-		if _, err := api.getModule(moduleName); err != nil {
-			apiLogger.Printf("API: Error loading module %q: %v\n", moduleName, err)
+		// No module on the cache, try to load it from modules folder
+		module, err := plugin.Open(path.Join(api.apiConfig.Path, name+".so"))
+
+		if err != nil {
+			apiLogger.Printf("Error processing module %q: %v\n", name, err)
 			return err
 		}
+
+		symModule, err := module.Lookup("CyberoModule")
+
+		if err != nil {
+			apiLogger.Printf("Error processing file %q: %v\n", name, err)
+			return err
+		}
+
+		moduleImpl, ok := symModule.(definitions.RestAPIModule)
+		if !ok {
+			apiLogger.Printf("Error processing file %q: %v\n", name, err)
+			return err
+		}
+
+		config, ok := api.apiConfig.Configuration[name]
+
+		if !ok {
+			// No configuration found, default behaviour is to disable the plugin
+			return nil
+		}
+
+		if !config.Enabled {
+			// Plugin disabled on configuration skipping
+			return nil
+		}
+
+		// Initialize plugin with arguments
+		if err = moduleImpl.Initialize(apiLogger, config.Config); err != nil {
+			apiLogger.Printf("API: Error initializing module %q: %v\n", name, err)
+			return err
+		}
+
+		apiLogger.Printf("API: Module loaded and initialized: %v\n", name)
+		api.apiModules[name] = moduleImpl
 
 		return nil
 	})
 
-	api.apiActions = map[string]RestAPIHandler{
+	api.apiActions = map[string]definitions.RestAPIHandler{
 		"list": api.listAction,
 		"info": api.infoAction,
 		"help": api.helpAction,

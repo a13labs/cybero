@@ -12,10 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package orchestrator
+package main
 
 import (
 	"context"
+	"cybero/definitions"
 	"errors"
 	"fmt"
 	"io"
@@ -32,7 +33,9 @@ import (
 	"github.com/docker/docker/pkg/system"
 )
 
-type orchestratorModule string
+type orchestratorModule struct {
+	definitions.RestAPIModule
+}
 
 // ContainerInfo container information
 type ContainerInfo struct {
@@ -394,5 +397,9 @@ func (mod orchestratorModule) Rollback(container string, tag string, restart boo
 	return errors.New("Not implemented yet")
 }
 
-// Module the exported plugin
-var Module orchestratorModule
+func main() {
+	// Nothing here, we are a module
+}
+
+// CyberoModule the exported plugin
+var CyberoModule orchestratorModule

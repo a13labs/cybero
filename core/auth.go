@@ -15,6 +15,7 @@
 package core
 
 import (
+	"cybero/definitions"
 	"errors"
 	"log"
 	"net/http"
@@ -29,7 +30,10 @@ var (
 
 // Auth the server security auth
 type Auth struct {
-	authActions map[string]RestAPIHandler
+	authActions        map[string]definitions.RestAPIHandler
+	authProvidersPath  string
+	authProviderConfig map[string]interface{}
+	authProvider       map[string]interface{}
 }
 
 func (auth *Auth) signinAction(w http.ResponseWriter, r *http.Request) error {
@@ -41,9 +45,9 @@ func (auth *Auth) refreshAction(w http.ResponseWriter, r *http.Request) error {
 }
 
 // Initialize initialize the the security auth
-func (auth *Auth) Initialize(logger *log.Logger, config *RestAPIConfig) {
+func (auth *Auth) Initialize(logger *log.Logger, config *definitions.RestAPIConfig) {
 	authLogger = logger
-	auth.authActions = map[string]RestAPIHandler{
+	auth.authActions = map[string]definitions.RestAPIHandler{
 		"signin":  auth.signinAction,
 		"refresh": auth.refreshAction,
 	}
