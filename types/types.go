@@ -53,17 +53,12 @@ type RestAPIModulesConfig struct {
 	Configuration map[string]RestAPIModuleConfig `json:"configs"`
 }
 
-// RestAPIAuthProviderConfig config part of authentication
-type RestAPIAuthProviderConfig struct {
-	Config map[string]interface{} `json:"config"`
-}
-
 // RestAPIAuthConfig config part of authentication
 type RestAPIAuthConfig struct {
-	Path     string                    `json:"path"`
-	Provider string                    `json:"provider"`
-	Config   RestAPIAuthProviderConfig `json:"config"`
-	Secret   []byte                    `json:"secret"`
+	Path     string                 `json:"path"`
+	Provider string                 `json:"provider"`
+	Config   map[string]interface{} `json:"config"`
+	Secret   []byte                 `json:"secret"`
 }
 
 // RestAPIConfig The server configuration structure
@@ -91,7 +86,7 @@ type RestAPIClaims struct {
 
 // RestAPIAuthProvider a Rest module interface
 type RestAPIAuthProvider interface {
-	Initialize(logger *log.Logger, config RestAPIModuleConfig) error
+	Initialize(logger *log.Logger, config map[string]interface{}) error
 	IsInitialized() bool
 	Name() string
 	Version() string

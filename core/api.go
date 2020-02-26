@@ -159,20 +159,20 @@ func (api *API) Initialize(logger *log.Logger, config *types.RestAPIConfig) {
 		module, err := plugin.Open(path.Join(api.apiConfig.Path, name+".so"))
 
 		if err != nil {
-			apiLogger.Printf("Error processing module %q: %v\n", name, err)
+			apiLogger.Printf("API: Error processing module %q: %v\n", name, err)
 			return err
 		}
 
 		symModule, err := module.Lookup("CyberoModule")
 
 		if err != nil {
-			apiLogger.Printf("Error processing file %q: %v\n", name, err)
+			apiLogger.Printf("API: Error processing file %q: %v\n", name, err)
 			return err
 		}
 
 		moduleImpl, ok := symModule.(types.RestAPIModule)
 		if !ok {
-			apiLogger.Printf("Error processing file %q: %v\n", name, err)
+			apiLogger.Printf("API: Error processing file %q: %v\n", name, err)
 			return err
 		}
 
@@ -220,13 +220,13 @@ func (api *API) HandleRequest(w http.ResponseWriter, r *http.Request) error {
 
 	// Check if it is an internal action
 	if action, ok := api.apiActions[parts[0]]; ok {
-		apiLogger.Printf("API builtin action called %q", parts[0])
+		apiLogger.Printf("API: builtin action called %q", parts[0])
 		return action(w, r)
 	}
 
 	// Check if is an action related to a module
 	if module, err := api.getModule(parts[0]); err == nil {
-		apiLogger.Printf("API  module %q called", parts[0])
+		apiLogger.Printf("API: module %q called", parts[0])
 		return module.HandleRequest(w, r)
 	}
 

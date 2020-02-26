@@ -19,7 +19,6 @@ import (
 	"crypto/tls"
 	"cybero/types"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -92,6 +91,17 @@ func (rest *RestAPIServer) Initialize() error {
 	}
 	serverLogger = log.New(rest.serverLogfile, "", log.LstdFlags)
 
+	// Initialize authentication
+	auth := Auth{}
+	if err := auth.Initialize(serverLogger, rest.serverConfig); err != nil {
+		serverLogger.Printf("RestAPIServer: Error initializing authentication: %v\n", err)
+		return err
+	}
+
+	// Initialize API
+	api := API{}
+	api.Initialize(serverLogger, rest.serverConfig)
+
 	// get the socket to listen
 	socket := rest.serverConfig.Socket
 
@@ -122,14 +132,8 @@ func (rest *RestAPIServer) Initialize() error {
 
 	} else {
 		serverLogger.Printf("RestAPIServer: Invalid socket to listen %q: %v\n", socket, err)
-		return errors.New("Invalid socket")
+		return err
 	}
-
-	// Create internal endpoints
-	auth := Auth{}
-	auth.Initialize(serverLogger, rest.serverConfig)
-	api := API{}
-	api.Initialize(serverLogger, rest.serverConfig)
 
 	// Assign internal endpoints
 	rest.APIHandler(AuthEndpoint, auth.HandleRequest)

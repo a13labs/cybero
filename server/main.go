@@ -38,6 +38,7 @@ func startServer() error {
 func main() {
 	fmt.Println("Cybero - modular API server, developed by Alexandre Pires (c.alexandre.pires@gmail.com) (2020)")
 	if err := startServer(); err != nil {
+		fmt.Println("Something went wrong, check log file!")
 		os.Exit(1)
 	}
 	os.Exit(0)

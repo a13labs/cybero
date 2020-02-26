@@ -19,6 +19,8 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"path"
+	"plugin"
 	"strings"
 )
 
@@ -30,10 +32,9 @@ var (
 
 // Auth the server security auth
 type Auth struct {
-	authActions        map[string]types.RestAPIHandler
-	authProvidersPath  string
-	authProviderConfig map[string]interface{}
-	authProvider       map[string]interface{}
+	authActions  map[string]types.RestAPIHandler
+	authConfig   types.RestAPIAuthConfig
+	authProvider types.RestAPIAuthProvider
 }
 
 func (auth *Auth) signinAction(w http.ResponseWriter, r *http.Request) error {
@@ -45,12 +46,45 @@ func (auth *Auth) refreshAction(w http.ResponseWriter, r *http.Request) error {
 }
 
 // Initialize initialize the the security auth
-func (auth *Auth) Initialize(logger *log.Logger, config *types.RestAPIConfig) {
+func (auth *Auth) Initialize(logger *log.Logger, config *types.RestAPIConfig) error {
+
 	authLogger = logger
+	auth.authConfig = config.Auth
+	providerFile := path.Join(auth.authConfig.Path, auth.authConfig.Provider+".so")
+	module, err := plugin.Open(providerFile)
+
+	if err != nil {
+		authLogger.Printf("Auth: Error processing provider %q: %v\n", auth.authConfig.Provider, err)
+		return err
+	}
+
+	symModule, err := module.Lookup("CyberoAuthProvider")
+
+	if err != nil {
+		authLogger.Printf("Auth: Error processing file %q: %v\n", auth.authConfig.Provider, err)
+		return err
+	}
+
+	authProvider, ok := symModule.(types.RestAPIAuthProvider)
+	if !ok {
+		authLogger.Printf("Auth: Error processing file %q: %v\n", auth.authConfig.Provider, err)
+		return err
+	}
+
+	// Initialize plugin with arguments
+	if err = authProvider.Initialize(authLogger, auth.authConfig.Config); err != nil {
+		authLogger.Printf("Auth: Error initializing provider %q: %v\n", auth.authConfig.Provider, err)
+		return err
+	}
+
+	authLogger.Printf("Auth: Provider loaded and initialized: %v\n", auth.authConfig.Provider)
+
 	auth.authActions = map[string]types.RestAPIHandler{
 		"signin":  auth.signinAction,
 		"refresh": auth.refreshAction,
 	}
+
+	return nil
 }
 
 // HandleRequest handle a request for the security auth
