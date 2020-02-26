@@ -70,7 +70,7 @@ func resolveLocalPath(localPath string) (absPath string, err error) {
 	return archive.PreserveTrailingDotOrSeparator(absPath, localPath, filepath.Separator), nil
 }
 
-func (mod orchestratorModule) Init(logger *log.Logger, configFile string) error {
+func (mod orchestratorModule) Initialize(logger *log.Logger, config map[string]interface{}) error {
 	defaultLogger = logger
 	moduleInitialized = true
 	defaultLogger.Printf("Orchestrator: Initializing module\n")

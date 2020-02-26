@@ -15,12 +15,16 @@
 package core
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
+	"flag"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 )
@@ -29,27 +33,118 @@ var serverLogger *log.Logger
 
 // RestAPIServer A simple RestAPI server
 type RestAPIServer struct {
-	Endpoints  RestAPIEndpoints
-	HTTPServer *http.Server
+	serverEndpoints  RestAPIEndpoints
+	httpServer       *http.Server
+	serverConfig     *RestAPIConfig
+	serverConfigFile string
+	serverLogfile    *os.File
 }
 
-// Init Initialize a Rest server
-func (s *RestAPIServer) Init(logger *log.Logger, configFile string, path string) error {
-	serverLogger = logger
-	InitializeAPI(serverLogger, configFile, path)
-	s.APIHandler("api", HandleRequest)
+func (rest *RestAPIServer) loadConfig(configFile string) error {
+
+	fileDscr, err := os.Open(configFile)
+	if err != nil {
+		fmt.Printf("RestAPIServer: Error loading config file %q: %v\n", configFile, err)
+		return err
+	}
+	defer fileDscr.Close()
+
+	decoder := json.NewDecoder(fileDscr)
+
+	err = decoder.Decode(rest.serverConfig)
+	if err != nil {
+		fmt.Printf("RestAPIServer: Error loading config file %q: %v\n", configFile, err)
+		return err
+	}
+
+	return nil
+}
+
+// Initialize Initialize a Rest server
+func (rest *RestAPIServer) Initialize() error {
+
+	var err error
+
+	rest.serverConfig = &RestAPIConfig{}
+
+	// Try to load configuration from arguments
+	flag.StringVar(&rest.serverConfigFile, "config", "", "Service config file")
+	flag.StringVar(&rest.serverConfig.LogFile, "logfile", "", "Log file name")
+	flag.StringVar(&rest.serverConfig.Socket, "socket", "", "Unix socket file")
+	flag.BoolVar(&rest.serverConfig.TLS, "tls", false, "Use TLS encryption")
+	flag.StringVar(&rest.serverConfig.CertPEM, "pem", "", "TLS PEM file")
+	flag.StringVar(&rest.serverConfig.CertKey, "key", "", "TLS key file")
+	flag.StringVar(&rest.serverConfig.Modules, "modules", "", "Modiles location")
+	flag.Parse()
+
+	// load configuration file
+	if rest.serverConfigFile != "" {
+		if err := rest.loadConfig(rest.serverConfigFile); err != nil {
+			return err
+		}
+	}
+
+	// Initialize logging to a file
+	if rest.serverLogfile, err = os.OpenFile(rest.serverConfig.LogFile,
+		os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err != nil {
+		log.Println(err)
+	}
+	serverLogger = log.New(rest.serverLogfile, "", log.LstdFlags)
+
+	// get the socket to listen
+	socket := rest.serverConfig.Socket
+
+	if strings.HasPrefix(socket, "unix://") {
+
+		// Unix socket listener
+		socketFile := strings.ReplaceAll(socket, "unix://", "")
+		if err := rest.listenUnixSocket(socketFile); err != nil {
+			return err
+		}
+
+	} else if strings.HasPrefix(socket, "tcp://") {
+		// Setup API Server on tcp socket if enabled
+
+		addr := strings.ReplaceAll(socket, "tcp://", "")
+
+		if rest.serverConfig.TLS {
+
+			// We have TLS enable, setup a secure socket, otherwise a non encrypted socket
+			if err := rest.listenTCPSocketTLS(addr, rest.serverConfig.CertPEM, rest.serverConfig.CertKey); err != nil {
+				serverLogger.Printf("RestAPIServer: Failed to bind server on tcp secure socket %q: %v\n", addr, err)
+				return err
+			}
+		} else if err := rest.listenTCPSocket(addr); err != nil {
+			serverLogger.Printf("RestAPIServer: Failed to bind server on tcp socket %q: %v\n", addr, err)
+			return err
+		}
+
+	} else {
+		serverLogger.Printf("RestAPIServer: Invalid socket to listen %q: %v\n", socket, err)
+		return errors.New("Invalid socket")
+	}
+
+	// Create internal endpoints
+	auth := Auth{}
+	auth.Initialize(serverLogger, rest.serverConfig)
+	api := API{}
+	api.Initialize(serverLogger, rest.serverConfig)
+
+	// Assign internal endpoints
+	rest.APIHandler(AuthEndpoint, auth.HandleRequest)
+	rest.APIHandler(APIEndpoint, api.HandleRequest)
 	return nil
 }
 
 // APIHandler Add a new handler
-func (s *RestAPIServer) APIHandler(url string, handler RestAPIHandler) {
-	if s.Endpoints == nil {
-		s.Endpoints = RestAPIEndpoints{}
+func (rest *RestAPIServer) APIHandler(url string, handler RestAPIHandler) {
+	if rest.serverEndpoints == nil {
+		rest.serverEndpoints = RestAPIEndpoints{}
 	}
-	s.Endpoints[url] = handler
+	rest.serverEndpoints[url] = handler
 }
 
-func (s *RestAPIServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (rest *RestAPIServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 
@@ -57,7 +152,7 @@ func (s *RestAPIServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if len(parts) != 0 {
 		serverLogger.Printf("Processing API request\n")
-		if handler, ok := s.Endpoints[parts[0]]; ok {
+		if handler, ok := rest.serverEndpoints[parts[0]]; ok {
 			if err := handler(w, r); err == nil {
 				// Request was handled by registered endpoint
 				return
@@ -75,8 +170,8 @@ func (s *RestAPIServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ListenUnixSocket start API listener on a unix socket
-func (s *RestAPIServer) ListenUnixSocket(socket string) error {
+// listenUnixSocket start API listener on a unix socket
+func (rest *RestAPIServer) listenUnixSocket(socket string) error {
 
 	addr, err := net.ResolveUnixAddr("unix", socket)
 
@@ -93,20 +188,20 @@ func (s *RestAPIServer) ListenUnixSocket(socket string) error {
 	}
 
 	server := http.Server{
-		Handler:      s,
+		Handler:      rest,
 		ErrorLog:     serverLogger,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  15 * time.Second,
 	}
-	s.HTTPServer = &server
+	rest.httpServer = &server
 
 	go server.Serve(listener)
 	return nil
 }
 
 // ListenTCPSocket Listen API in a TCP socket
-func (s *RestAPIServer) ListenTCPSocket(address string) error {
+func (rest *RestAPIServer) listenTCPSocket(address string) error {
 
 	listener, err := net.Listen("tcp", address)
 
@@ -116,20 +211,20 @@ func (s *RestAPIServer) ListenTCPSocket(address string) error {
 	}
 
 	server := http.Server{
-		Handler:      s,
+		Handler:      rest,
 		ErrorLog:     serverLogger,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  15 * time.Second,
 	}
-	s.HTTPServer = &server
+	rest.httpServer = &server
 
 	go server.Serve(listener)
 	return nil
 }
 
-// ListenTCPSocketTLS Listen API in a TCP socket
-func (s *RestAPIServer) ListenTCPSocketTLS(address string, pemFile string, keyFile string) error {
+// listenTCPSocketTLS Listen API in a TCP socket
+func (rest *RestAPIServer) listenTCPSocketTLS(address string, pemFile string, keyFile string) error {
 	cert, err := tls.LoadX509KeyPair(pemFile, keyFile)
 
 	if err != nil {
@@ -147,14 +242,38 @@ func (s *RestAPIServer) ListenTCPSocketTLS(address string, pemFile string, keyFi
 	}
 
 	server := http.Server{
-		Handler:      s,
+		Handler:      rest,
 		ErrorLog:     serverLogger,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  15 * time.Second,
 	}
-	s.HTTPServer = &server
+	rest.httpServer = &server
 
 	go server.Serve(listener)
 	return nil
+}
+
+// Shutdown shutdown server
+func (rest *RestAPIServer) Shutdown() {
+	// Do a gracefull shutdown of the server
+	serverLogger.Println("Server is shutting down...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	rest.httpServer.SetKeepAlivesEnabled(false)
+
+	if err := rest.httpServer.Shutdown(ctx); err != nil {
+		serverLogger.Fatalf("Could not gracefully shutdown the TCP server: %v\n", err)
+	}
+
+	// get the socket to listen
+	socket := rest.serverConfig.Socket
+
+	if strings.HasPrefix(socket, "unix://") {
+		socketFile := strings.ReplaceAll(socket, "unix://", "")
+		defer os.Remove(socketFile)
+	}
+	defer rest.serverLogfile.Close()
 }

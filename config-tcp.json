@@ -1,0 +1,6 @@
+{
+    "socket": "tcp://127.0.0.1:8888",
+    "tls": false,
+    "modules": "/home/alexandre/modules",
+    "logfile": "/home/alexandre/restserver.log"
+}

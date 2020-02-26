@@ -21,7 +21,7 @@ import (
 
 // RestModule a Rest module interface
 type RestModule interface {
-	Init(logger *log.Logger, configFile string) error
+	Initialize(logger *log.Logger, config map[string]interface{}) error
 	IsInitialized() bool
 	Name() string
 	Version() string
@@ -38,3 +38,14 @@ type RestAPIHandler func(http.ResponseWriter, *http.Request) error
 
 // RestAPIEndpoints map of endpoints
 type RestAPIEndpoints map[string]RestAPIHandler
+
+// RestAPIConfig The server configuration structure
+type RestAPIConfig struct {
+	Socket               string
+	TLS                  bool
+	CertPEM              string
+	CertKey              string
+	Modules              string
+	LogFile              string
+	ModulesConfiguration map[string]interface{}
+}

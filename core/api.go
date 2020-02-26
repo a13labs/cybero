@@ -28,83 +28,88 @@ import (
 	"strings"
 )
 
-// defaultPath location to find modukes
 var (
-	defaultPath       = "/usr/lib/cybero"
-	defaultConfigFile = "/etc/cybero/daemon.json"
-	defaultLogger     *log.Logger
-	modulesCache      map[string]interface{}
-	apiActions        map[string]RestAPIHandler
+	apiLogger *log.Logger
+	// APIEndpoint the api endpoint
+	APIEndpoint = "api"
 )
 
+// API location to find modukes
+type API struct {
+	apiModulesPath  string
+	apiModuleConfig map[string]interface{}
+	apiModules      map[string]interface{}
+	apiActions      map[string]RestAPIHandler
+}
+
 // getModule Get module based on name
-func getModule(name string) (RestModule, error) {
+func (api *API) getModule(name string) (RestModule, error) {
 
 	// Check if we have already the module on the cache
-	moduleImpl, ok := modulesCache[name]
+	moduleImpl, ok := api.apiModules[name]
 
 	if !ok {
 		// No module on the cache, try to load it from modules folder
-		module, err := plugin.Open(path.Join(defaultPath, name+".so"))
+		module, err := plugin.Open(path.Join(api.apiModulesPath, name+".so"))
 
 		if err != nil {
-			defaultLogger.Printf("Error processing module %q: %v\n", name, err)
+			apiLogger.Printf("Error processing module %q: %v\n", name, err)
 			return nil, err
 		}
 
 		_, err = module.Lookup("Name")
 
 		if err != nil {
-			defaultLogger.Printf("Error processing module %q: %v\n", name, err)
+			apiLogger.Printf("Error processing module %q: %v\n", name, err)
 			return nil, err
 		}
 
 		_, err = module.Lookup("Version")
 
 		if err != nil {
-			defaultLogger.Printf("Error processing mod %q: %v\n", name, err)
+			apiLogger.Printf("Error processing mod %q: %v\n", name, err)
 			return nil, err
 		}
 
 		symModule, err := module.Lookup("CyberoModule")
 
 		if err != nil {
-			defaultLogger.Printf("Error processing file %q: %v\n", name, err)
+			apiLogger.Printf("Error processing file %q: %v\n", name, err)
 			return nil, err
 		}
 
 		moduleImpl, ok := symModule.(RestModule)
 		if !ok {
-			defaultLogger.Printf("Error processing file %q: %v\n", name, err)
+			apiLogger.Printf("Error processing file %q: %v\n", name, err)
 			return nil, err
 		}
 
 		// Initialize plugin with arguments
-		if err = moduleImpl.Init(defaultLogger, defaultConfigFile); err != nil {
-			defaultLogger.Printf("API: Error initializing module %q: %v\n", name, err)
+		if err = moduleImpl.Initialize(apiLogger, api.apiModuleConfig); err != nil {
+			apiLogger.Printf("API: Error initializing module %q: %v\n", name, err)
 			return nil, err
 		}
 
-		defaultLogger.Printf("API: Module loaded and initialized: %v\n", name)
-		modulesCache[name] = moduleImpl
+		apiLogger.Printf("API: Module loaded and initialized: %v\n", name)
+		api.apiModules[name] = moduleImpl
 	}
 
 	restModule := moduleImpl.(RestModule)
 	if !restModule.IsInitialized() {
-		restModule.Init(defaultLogger, defaultConfigFile)
+		restModule.Initialize(apiLogger, api.apiModuleConfig)
 	}
 
 	return restModule, nil
 }
 
 // listAction Send a list of available modules
-func listAction(w http.ResponseWriter, r *http.Request) error {
+func (api *API) listAction(w http.ResponseWriter, r *http.Request) error {
 
 	modules := []map[string]interface{}{
 		map[string]interface{}{"name": "builtin", "version": "-"},
 	}
 
-	for _, moduleImpl := range modulesCache {
+	for _, moduleImpl := range api.apiModules {
 		module := moduleImpl.(RestModule)
 		modules = append(modules, map[string]interface{}{"name": module.Name(), "version": module.Version()})
 	}
@@ -121,7 +126,7 @@ func listAction(w http.ResponseWriter, r *http.Request) error {
 }
 
 // infoAction Send information about a specific module
-func infoAction(w http.ResponseWriter, r *http.Request) error {
+func (api *API) infoAction(w http.ResponseWriter, r *http.Request) error {
 
 	encoder := json.NewEncoder(w)
 
@@ -130,7 +135,7 @@ func infoAction(w http.ResponseWriter, r *http.Request) error {
 
 	if module == "" {
 		code, msg = 0, map[string]interface{}{"Info": fmt.Sprintf("Builtin module, contains builtin functions to handle modules.\n")}
-	} else if module, err := getModule(module); err == nil {
+	} else if module, err := api.getModule(module); err == nil {
 		code, msg = 0, map[string]interface{}{"Info": module.Info()}
 	}
 
@@ -143,7 +148,7 @@ func infoAction(w http.ResponseWriter, r *http.Request) error {
 }
 
 // helpAction Send help about a specific module
-func helpAction(w http.ResponseWriter, r *http.Request) error {
+func (api *API) helpAction(w http.ResponseWriter, r *http.Request) error {
 
 	encoder := json.NewEncoder(w)
 
@@ -161,7 +166,7 @@ func helpAction(w http.ResponseWriter, r *http.Request) error {
 			code, msg = 0, map[string]interface{}{"Help": "Returns information about a specific module"}
 		}
 
-	} else if module, err := getModule(module); err == nil {
+	} else if module, err := api.getModule(module); err == nil {
 		code, msg = 0, map[string]interface{}{"Help": module.Help(action)}
 	}
 
@@ -173,24 +178,24 @@ func helpAction(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
-// InitializeAPI Initialize modules compoment
-func InitializeAPI(logger *log.Logger, configFile string, path string) {
+// Initialize Initialize modules compoment
+func (api *API) Initialize(logger *log.Logger, config *RestAPIConfig) {
 
-	defaultLogger = logger
-	defaultConfigFile = configFile
-	defaultPath = path
+	apiLogger = logger
+	api.apiModuleConfig = config.ModulesConfiguration
+	api.apiModulesPath = config.Modules
 
-	defaultLogger.Printf("API: Initializing modules\n")
+	apiLogger.Printf("API: Initializing modules\n")
 
 	// Initialize modules cache
-	modulesCache = map[string]interface{}{
+	api.apiModules = map[string]interface{}{
 		"orchestrator": orchestrator.Module,
 	}
 
-	filepath.Walk(defaultPath, func(fPath string, info os.FileInfo, err error) error {
+	filepath.Walk(api.apiModulesPath, func(fPath string, info os.FileInfo, err error) error {
 
 		if err != nil {
-			defaultLogger.Printf("API: Error accessing path %q: %v\n", fPath, err)
+			apiLogger.Printf("API: Error accessing path %q: %v\n", fPath, err)
 			return nil
 		}
 
@@ -201,40 +206,41 @@ func InitializeAPI(logger *log.Logger, configFile string, path string) {
 		// Extract module name from filename /xx/xx/module.xxx -> module
 		moduleName := strings.ReplaceAll(filepath.Base(info.Name()), filepath.Ext(info.Name()), "")
 
-		if _, err := getModule(moduleName); err != nil {
-			defaultLogger.Printf("API: Error loading module %q: %v\n", moduleName, err)
+		if _, err := api.getModule(moduleName); err != nil {
+			apiLogger.Printf("API: Error loading module %q: %v\n", moduleName, err)
 			return err
 		}
 
 		return nil
 	})
 
-	apiActions = map[string]RestAPIHandler{
-		"list": listAction,
-		"info": infoAction,
-		"help": helpAction,
+	api.apiActions = map[string]RestAPIHandler{
+		"list": api.listAction,
+		"info": api.infoAction,
+		"help": api.helpAction,
 	}
 }
 
 // HandleRequest pass the request to an external module
-func HandleRequest(w http.ResponseWriter, r *http.Request) error {
+func (api *API) HandleRequest(w http.ResponseWriter, r *http.Request) error {
 
 	// remove /api/ from url and split
-	parts := strings.Split(r.URL.Path[5:], "/")
+	parts := strings.Split(r.URL.Path[len(APIEndpoint)+2:], "/")
 
 	if len(parts) == 0 {
+		apiLogger.Printf("API: No module called %q\n", r.URL.Path[len(APIEndpoint)+2:])
 		return errors.New("No module called")
 	}
 
 	// Check if it is an internal action
-	if action, ok := apiActions[parts[0]]; ok {
-		defaultLogger.Printf("API builtin action called %q", parts[0])
+	if action, ok := api.apiActions[parts[0]]; ok {
+		apiLogger.Printf("API builtin action called %q", parts[0])
 		return action(w, r)
 	}
 
 	// Check if is an action related to a module
-	if module, err := getModule(parts[0]); err == nil {
-		defaultLogger.Printf("API  module %q called", parts[0])
+	if module, err := api.getModule(parts[0]); err == nil {
+		apiLogger.Printf("API  module %q called", parts[0])
 		return module.HandleRequest(w, r)
 	}
 

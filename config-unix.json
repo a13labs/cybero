@@ -1,0 +1,6 @@
+{
+    "socket": "unix:///home/alexandre/restserver.socket",
+    "tls": false,
+    "modules": "/home/alexandre/modules",
+    "logfile": "/home/alexandre/restserver.log"
+}
