@@ -16,7 +16,7 @@ package main
 
 import (
 	"context"
-	"cybero/types"
+	cyberotypes "cybero/types"
 	"errors"
 	"fmt"
 	"io"
@@ -34,7 +34,7 @@ import (
 )
 
 type orchestratorModule struct {
-	types.RestAPIModule
+	cyberotypes.RestAPIModule
 }
 
 // ContainerInfo container information
@@ -61,8 +61,7 @@ type ContainerInfo struct {
 var defaultLogger *log.Logger
 
 var (
-	defaultRegistry   = "cybero.com"
-	moduleInitialized = false
+	defaultRegistry = "cybero.com"
 )
 
 func resolveLocalPath(localPath string) (absPath string, err error) {
@@ -75,13 +74,8 @@ func resolveLocalPath(localPath string) (absPath string, err error) {
 
 func (mod orchestratorModule) Initialize(logger *log.Logger, config map[string]interface{}) error {
 	defaultLogger = logger
-	moduleInitialized = true
 	defaultLogger.Printf("Orchestrator: Initializing module\n")
 	return nil
-}
-
-func (mod orchestratorModule) IsInitialized() bool {
-	return moduleInitialized
 }
 
 func (mod orchestratorModule) Name() string {

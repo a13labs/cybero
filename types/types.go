@@ -87,7 +87,6 @@ type RestAPIClaims struct {
 // RestAPIAuthProvider a Rest module interface
 type RestAPIAuthProvider interface {
 	Initialize(logger *log.Logger, config map[string]interface{}) error
-	IsInitialized() bool
 	Name() string
 	Version() string
 	Authenticate(credential *RestAPICredentials) bool

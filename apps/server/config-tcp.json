@@ -5,13 +5,13 @@
         "path": "/home/alexandre/modules",
         "configs" : {
             "orchestrator" : {
-                "enabled" : false,
+                "enabled" : true,
                 "config" : {}
             }
         }
     },
     "auth": {
-        "path": "/home/alexandre/provider",
+        "path": "/home/alexandre/providers",
         "provider": "fileauth",
         "config": {},
         "secret":  "RDExM3BFQHhoR1EjVllwbkp5dW5hOTkqcGkjQkRMU2xBYWZpTCV0OXBKd1hJWjFtajA2XnRkVWQqV3hZMlVqSwo="
