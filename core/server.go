@@ -74,6 +74,9 @@ func (rest *RestAPIServer) Initialize() error {
 		return err
 	}
 
+	// Load configured modules
+	GetModuleManager().LoadModules()
+
 	// Assign internal endpoints
 	rest.APIHandler(AuthEndpoint, GetAuthManager().HandleRequest)
 	rest.APIHandler(APIEndpoint, GetAPIManager().HandleRequest)

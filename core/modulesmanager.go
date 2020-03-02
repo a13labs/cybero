@@ -22,12 +22,14 @@ var (
 	modulesManager *ModulesManager
 )
 
-func (mod *ModulesManager) loadModulesFromFolder(modulesPath string) {
+//LoadModules load all modules
+func (mod *ModulesManager) LoadModules() {
 
 	cfg := GetConfigManager().GetConfig()
 	logger := GetLogManager().GetLogger()
 
-	filepath.Walk(modulesPath, func(fPath string, info os.FileInfo, err error) error {
+	filepath.Walk(cfg.Modules.Path, func(fPath string, info os.FileInfo, err error) error {
+
 		if err != nil {
 			logger.Printf("ModuleManager: Error accessing path %q: %v\n", fPath, err)
 			return nil
@@ -41,75 +43,69 @@ func (mod *ModulesManager) loadModulesFromFolder(modulesPath string) {
 		name := strings.ReplaceAll(filepath.Base(info.Name()), filepath.Ext(info.Name()), "")
 
 		// No module on the cache, try to load it from modules folder
-		module, err := plugin.Open(path.Join(modulesPath, name+".so"))
+		pluginFile := path.Join(cfg.Modules.Path, name+".so")
+		module, err := plugin.Open(pluginFile)
 
 		if err != nil {
 			logger.Printf("API: Error processing module %q: %v\n", name, err)
 			return nil
 		}
 
-		if symModule, err := module.Lookup("CyberoModule"); err != nil {
-
-			logger.Println(name)
+		// Check if module is a RestAPI handler
+		logger.Printf("ModuleManager: Checking if %q is a RestAPI handler\n", pluginFile)
+		if symModule, err := module.Lookup("CyberoRestHandler"); err == nil {
 
 			if moduleImpl, ok := symModule.(types.RestAPIModule); ok {
 
 				if config, ok := cfg.Modules.Configuration[name]; ok {
 
-					if !config.Enabled {
-						// Plugin disabled on configuration skipping
+					if config.Enabled {
+
+						// Initialize plugin with arguments
+						if err = moduleImpl.Initialize(logger, config.Config); err != nil {
+							logger.Printf("ModulesManager: Error initializing module %q: %v\n", name, err)
+							return nil
+						}
+
+						logger.Printf("ModulesManager: Module loaded and initialized: %q, version: %q\n", moduleImpl.Name(), moduleImpl.Version())
+						mod.apiModules[name] = moduleImpl
+
 						return nil
 					}
 
-					// Initialize plugin with arguments
-					if err = moduleImpl.Initialize(logger, config.Config); err != nil {
-						logger.Printf("ModulesManager: Error initializing module %q: %v\n", name, err)
-						return nil
-					}
-
-					logger.Printf("ModulesManager: Module loaded and initialized: %q, version: %q\n", moduleImpl.Name(), moduleImpl.Version())
-					mod.apiModules[name] = moduleImpl
-				} else {
-					// No configuration found, default behaviour is to disable the plugin
-					return nil
 				}
-
-			} else {
-				logger.Printf("ModuleManager: Error processing file %q: %v\n", name, err)
-				return nil
 			}
 
+			logger.Printf("ModuleManager: Plugin %q not loaded. is it enabled?\n", name)
+			return nil
 		}
 
-		if symModule, err := module.Lookup("CyberoAuthProvider"); err != nil {
+		// Check if module is a Authentication provider
+		logger.Printf("ModuleManager: Checking if %q is a Auth provider\n", pluginFile)
+		if symModule, err := module.Lookup("CyberoAuthProvider"); err == nil {
 
 			if moduleImpl, ok := symModule.(types.RestAPIAuthProvider); ok {
 
 				if config, ok := cfg.Modules.Configuration[name]; ok {
 
-					if !config.Enabled {
-						// Plugin disabled on configuration skipping
+					if config.Enabled {
+
+						// Initialize plugin with arguments
+						if err = moduleImpl.Initialize(logger, config.Config); err != nil {
+							logger.Printf("ModulesManager: Error initializing module %q: %v\n", name, err)
+							return nil
+						}
+
+						logger.Printf("ModulesManager: Module loaded and initialized: %q, version: %q\n", moduleImpl.Name(), moduleImpl.Version())
+						mod.authModules[name] = moduleImpl
 						return nil
 					}
 
-					// Initialize plugin with arguments
-					if err = moduleImpl.Initialize(logger, config.Config); err != nil {
-						logger.Printf("ModulesManager: Error initializing module %q: %v\n", name, err)
-						return nil
-					}
-
-					logger.Printf("ModulesManager: Module loaded and initialized: %q, version: %q\n", moduleImpl.Name(), moduleImpl.Version())
-					mod.authModules[name] = moduleImpl
-				} else {
-					// No configuration found, default behaviour is to disable the plugin
-					return nil
 				}
-
-			} else {
-				logger.Printf("ModuleManager: Error processing module %q: %v\n", name, err)
-				return nil
 			}
 
+			logger.Printf("ModuleManager: Plugin %q not loaded. is it enabled?\n", name)
+			return nil
 		}
 
 		logger.Printf("ModuleManager: Error processing file %q: %v\n", name, err)
@@ -150,7 +146,6 @@ func GetModuleManager() *ModulesManager {
 	modulesSync.Do(func() {
 
 		// Get the current configuration
-		cfg := GetConfigManager().GetConfig()
 		logger := GetLogManager().GetLogger()
 
 		// Instanciate the logManager
@@ -161,9 +156,6 @@ func GetModuleManager() *ModulesManager {
 		// Initialize modules cache
 		modulesManager.apiModules = make(map[string]interface{})
 		modulesManager.authModules = make(map[string]interface{})
-
-		// try to load modules from the configured folder
-		modulesManager.loadModulesFromFolder(cfg.Modules.Path)
 	})
 
 	if configManager == nil {

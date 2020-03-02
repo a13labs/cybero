@@ -395,5 +395,5 @@ func main() {
 	// Nothing here, we are a module
 }
 
-// CyberoModule the exported plugin
-var CyberoModule orchestratorModule
+// CyberoRestHandler the exported plugin
+var CyberoRestHandler orchestratorModule
