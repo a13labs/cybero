@@ -2,7 +2,7 @@
     "socket": "tcp://127.0.0.1:8888",
     "tls": false,
     "modules": {
-        "path": "/home/alexandre/modules",
+        "path": "./modules",
         "configs" : {
             "orchestrator" : {
                 "enabled" : true,
