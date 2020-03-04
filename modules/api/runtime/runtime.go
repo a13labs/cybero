@@ -184,12 +184,8 @@ func (mod runtimeModule) RuntimeCreate(runtimeInfo *RuntimeInfo) (string, error)
 	}
 
 	// Just a hugly hack while testing
-	merda, _ := client.ContainerService().Get(ctx, runtimeInfo.Name)
 	client.ContainerService().Delete(ctx, runtimeInfo.Name)
 	client.SnapshotService(containerd.DefaultSnapshotter).Remove(ctx, runtimeInfo.SnapshotName)
-	client.TaskService().Delete(ctx, &tasks.DeleteTaskRequest{
-		ContainerID: merda.ID,
-	})
 
 	// TODO: add more specs like devices, env, etc
 	newOpts := containerd.WithNewSpec(
@@ -227,6 +223,11 @@ func (mod runtimeModule) RuntimeDestroy(runtimeID string) error {
 		defaultLogger.Println("Runtime: Runtime does not exits")
 		return err
 	}
+
+	// Just a hugly hack while testing
+	client.TaskService().Delete(ctx, &tasks.DeleteTaskRequest{
+		ContainerID: container.ID(),
+	})
 
 	err = container.Delete(ctx, containerd.WithSnapshotCleanup)
 
