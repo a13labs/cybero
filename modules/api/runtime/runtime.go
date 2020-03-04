@@ -184,8 +184,12 @@ func (mod runtimeModule) RuntimeCreate(runtimeInfo *RuntimeInfo) (string, error)
 	}
 
 	// Just a hugly hack while testing
+	cont, _ := client.ContainerService().Get(ctx, runtimeInfo.Name)
 	client.ContainerService().Delete(ctx, runtimeInfo.Name)
 	client.SnapshotService(containerd.DefaultSnapshotter).Remove(ctx, runtimeInfo.SnapshotName)
+	client.TaskService().Delete(ctx, &tasks.DeleteTaskRequest{
+		ContainerID: cont.ID,
+	})
 
 	// TODO: add more specs like devices, env, etc
 	newOpts := containerd.WithNewSpec(
@@ -225,10 +229,19 @@ func (mod runtimeModule) RuntimeDestroy(runtimeID string) error {
 	}
 
 	// Just a hugly hack while testing
-	client.TaskService().Delete(ctx, &tasks.DeleteTaskRequest{
+	responseKill, err := client.TaskService().Kill(ctx, &tasks.KillRequest{
+		ContainerID: container.ID(),
+		Signal:      9,
+		All:         true,
+	})
+
+	fmt.Println(responseKill, err)
+
+	responseDel, err := client.TaskService().Delete(ctx, &tasks.DeleteTaskRequest{
 		ContainerID: container.ID(),
 	})
 
+	fmt.Println(responseDel, err)
 	err = container.Delete(ctx, containerd.WithSnapshotCleanup)
 
 	if err != nil {
@@ -301,6 +314,12 @@ func (mod runtimeModule) RuntimeExec(runtimeID string, taskInfo TaskInfo) (uint3
 		return 0, err
 	}
 
+	// err = task.Start(ctx)
+	// if err != nil {
+	// 	defaultLogger.Printf("Runtime: Error preparing task execution environment: %v\n", err)
+	// 	return 0, err
+	// }
+
 	return process.Pid(), nil
 }
 
@@ -342,19 +361,19 @@ func main() {
 	fmt.Println(rID)
 	time.Sleep(100)
 
-	// // task := TaskInfo{
-	// // 	Cmd:  "/bin/ls",
-	// // 	Args: []string{"/bin/ls"},
-	// // }
+	task := TaskInfo{
+		Cmd:  "ls",
+		Args: []string{"/bin/ls"},
+	}
 
-	// // pID, err := test.RuntimeExec(rID, task)
+	pID, err := test.RuntimeExec(rID, task)
 
-	// if err == nil {
-	// 	fmt.Println(pID)
-	// 	time.Sleep(10)
-	// } else {
-	// 	fmt.Println("oops, something went wrong executing command!!")
-	// }
+	if err == nil {
+		fmt.Println(pID)
+		time.Sleep(100)
+	} else {
+		fmt.Println("oops, something went wrong executing command!!")
+	}
 
 	err = test.RuntimeDestroy(rID)
 
