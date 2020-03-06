@@ -22,6 +22,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"syscall"
 	"time"
 
 	"github.com/containerd/containerd"
@@ -50,10 +51,11 @@ type RuntimeInfo struct {
 
 // TaskInfo Task information
 type TaskInfo struct {
-	Cmd  string
+	Name string
 	Args []string
 	Env  []string
 	Cwd  string
+	PID  uint32
 }
 
 // defaultLogger default logger
@@ -183,14 +185,6 @@ func (mod runtimeModule) RuntimeCreate(runtimeInfo *RuntimeInfo) (string, error)
 		}
 	}
 
-	// Just a hugly hack while testing
-	cont, _ := client.ContainerService().Get(ctx, runtimeInfo.Name)
-	client.ContainerService().Delete(ctx, runtimeInfo.Name)
-	client.SnapshotService(containerd.DefaultSnapshotter).Remove(ctx, runtimeInfo.SnapshotName)
-	client.TaskService().Delete(ctx, &tasks.DeleteTaskRequest{
-		ContainerID: cont.ID,
-	})
-
 	// TODO: add more specs like devices, env, etc
 	newOpts := containerd.WithNewSpec(
 		oci.WithImageConfig(image),
@@ -224,28 +218,26 @@ func (mod runtimeModule) RuntimeDestroy(runtimeID string) error {
 	container, err := client.LoadContainer(ctx, runtimeID)
 
 	if err != nil {
-		defaultLogger.Println("Runtime: Runtime does not exits")
+		defaultLogger.Println("Runtime: client.LoadContainer")
 		return err
 	}
 
-	// Just a hugly hack while testing
-	responseKill, err := client.TaskService().Kill(ctx, &tasks.KillRequest{
+	// Force a kill request of the associated
+	_, err = client.TaskService().Kill(ctx, &tasks.KillRequest{
 		ContainerID: container.ID(),
 		Signal:      9,
 		All:         true,
 	})
 
-	fmt.Println(responseKill, err)
-
-	responseDel, err := client.TaskService().Delete(ctx, &tasks.DeleteTaskRequest{
+	// Force delete the associated task
+	_, err = client.TaskService().Delete(ctx, &tasks.DeleteTaskRequest{
 		ContainerID: container.ID(),
 	})
 
-	fmt.Println(responseDel, err)
 	err = container.Delete(ctx, containerd.WithSnapshotCleanup)
 
 	if err != nil {
-		defaultLogger.Printf("Runtime: Error deleting runtime: %v\n", err)
+		defaultLogger.Printf("Runtime: Error container.Delete: %v\n", err)
 		return err
 	}
 
@@ -267,11 +259,11 @@ func (mod runtimeModule) RuntimeExists(runtimeID string) bool {
 	return err == nil
 }
 
-func (mod runtimeModule) RuntimeExec(runtimeID string, taskInfo TaskInfo) (uint32, error) {
+func (mod runtimeModule) RuntimeExec(runtimeID string, taskInfo *TaskInfo) error {
 
 	if client == nil {
 		defaultLogger.Println("Runtime: Client not available")
-		return 0, errors.New("Client not available")
+		return errors.New("Client not available")
 	}
 
 	ctx := namespaces.WithNamespace(context.Background(), defaultNamespace)
@@ -280,25 +272,24 @@ func (mod runtimeModule) RuntimeExec(runtimeID string, taskInfo TaskInfo) (uint3
 
 	if err != nil {
 		defaultLogger.Printf("Runtime: Runtime does not exits: %v\n", err)
-		return 0, err
+		return err
 	}
 
 	ciOptions := cio.NewCreator(
-		cio.WithStreams(os.Stdin, os.Stdout, os.Stderr),
-		// cio.WithStreams(nil, defaultLogger.Writer(), defaultLogger.Writer()),
+		cio.WithStreams(nil, defaultLogger.Writer(), defaultLogger.Writer()),
 	)
 
 	task, err := container.NewTask(ctx, ciOptions)
 
 	if err != nil {
 		defaultLogger.Printf("Runtime: Error preparing task execution environment: %v\n", err)
-		return 0, err
+		return err
 	}
 
 	_, err = task.Wait(ctx)
 	if err != nil {
 		defaultLogger.Printf("Runtime: Error preparing task execution environment: %v\n", err)
-		return 0, err
+		return err
 	}
 
 	execOpts := &specs.Process{
@@ -307,20 +298,70 @@ func (mod runtimeModule) RuntimeExec(runtimeID string, taskInfo TaskInfo) (uint3
 		Cwd:  taskInfo.Cwd,
 	}
 
-	process, err := task.Exec(ctx, taskInfo.Cmd, execOpts, ciOptions)
+	process, err := task.Exec(ctx, taskInfo.Name, execOpts, ciOptions)
 
 	if err != nil {
-		defaultLogger.Printf("Runtime: Error on executing command: %v\n", err)
-		return 0, err
+		defaultLogger.Printf("Runtime: Error task.Exec: %v\n", err)
+		return err
 	}
 
-	// err = task.Start(ctx)
-	// if err != nil {
-	// 	defaultLogger.Printf("Runtime: Error preparing task execution environment: %v\n", err)
-	// 	return 0, err
-	// }
+	err = process.Start(ctx)
 
-	return process.Pid(), nil
+	if err != nil {
+		defaultLogger.Printf("Runtime: Error process.Start: %v\n", err)
+		return err
+	}
+
+	_, err = process.Wait(ctx)
+	if err != nil {
+		defaultLogger.Printf("Runtime: Error process.Wait: %v\n", err)
+		return err
+	}
+
+	taskInfo.PID = process.Pid()
+
+	return nil
+}
+
+func (mod runtimeModule) RuntimeKill(runtimeID string, taskInfo *TaskInfo, signal syscall.Signal) error {
+
+	if client == nil {
+		defaultLogger.Println("Runtime: Client not available")
+		return errors.New("Client not available")
+	}
+
+	ctx := namespaces.WithNamespace(context.Background(), defaultNamespace)
+
+	container, err := client.LoadContainer(ctx, runtimeID)
+
+	if err != nil {
+		defaultLogger.Printf("Runtime: Runtime does not exits: %v\n", err)
+		return err
+	}
+
+	ciAttach := cio.NewAttach(
+		cio.WithStreams(nil, defaultLogger.Writer(), defaultLogger.Writer()),
+	)
+
+	task, err := container.Task(ctx, ciAttach)
+	if err != nil {
+		defaultLogger.Printf("Runtime: Error container.Task: %v\n", err)
+		return err
+	}
+
+	process, err := task.LoadProcess(ctx, taskInfo.Name, ciAttach)
+	if err != nil {
+		defaultLogger.Printf("Runtime: Error task.LoadProcess: %v\n", err)
+		return err
+	}
+
+	err = process.Kill(ctx, signal)
+	if err != nil {
+		defaultLogger.Printf("Runtime: Error process.Kill: %v\n", err)
+		return err
+	}
+
+	return nil
 }
 
 func main() {
@@ -359,18 +400,19 @@ func main() {
 	}
 
 	fmt.Println(rID)
-	time.Sleep(100)
+	time.Sleep(5 * time.Second)
 
 	task := TaskInfo{
-		Cmd:  "ls",
+		Name: "command",
 		Args: []string{"/bin/ls"},
+		Cwd:  "/",
 	}
 
-	pID, err := test.RuntimeExec(rID, task)
+	err = test.RuntimeExec(rID, &task)
 
 	if err == nil {
-		fmt.Println(pID)
-		time.Sleep(100)
+		fmt.Println(task.PID)
+		time.Sleep(5 * time.Second)
 	} else {
 		fmt.Println("oops, something went wrong executing command!!")
 	}
