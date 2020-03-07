@@ -158,12 +158,17 @@ func (mod runtimeModule) ImageList() (*[]string, error) {
 	return &result, nil
 }
 
-func (mod runtimeModule) RuntimeCreate(runtimeInfo *RuntimeInfo) (string, error) {
+func (mod runtimeModule) RuntimeCreate(runtimeInfo *RuntimeInfo) error {
 
 	var image containerd.Image
 	var err error
 
 	ctx := namespaces.WithNamespace(context.Background(), defaultNamespace)
+
+	if mod.RuntimeExists(runtimeInfo.Name) {
+		defaultLogger.Printf("Runtime: Runtime already exists: %q\n", runtimeInfo.Name)
+		return errors.New("Runtime already exists")
+	}
 
 	if !mod.ImageExists(runtimeInfo.Runtime) {
 
@@ -171,7 +176,7 @@ func (mod runtimeModule) RuntimeCreate(runtimeInfo *RuntimeInfo) (string, error)
 
 		if err != nil {
 			defaultLogger.Println("Runtime: Error pulling image")
-			return "", err
+			return err
 		}
 
 		defaultLogger.Printf("Runtime: Image %q sucessfully pulled\n", runtimeInfo.Runtime)
@@ -181,7 +186,7 @@ func (mod runtimeModule) RuntimeCreate(runtimeInfo *RuntimeInfo) (string, error)
 
 		if err != nil {
 			defaultLogger.Printf("Runtime: Error pulling image: %v\n", err)
-			return "", err
+			return err
 		}
 	}
 
@@ -190,7 +195,7 @@ func (mod runtimeModule) RuntimeCreate(runtimeInfo *RuntimeInfo) (string, error)
 		oci.WithImageConfig(image),
 	)
 
-	container, err := client.NewContainer(
+	_, err = client.NewContainer(
 		ctx,
 		runtimeInfo.Name,
 		containerd.WithNewSnapshot(runtimeInfo.SnapshotName, image),
@@ -199,14 +204,15 @@ func (mod runtimeModule) RuntimeCreate(runtimeInfo *RuntimeInfo) (string, error)
 
 	if err != nil {
 		defaultLogger.Printf("Runtime: Error creating runtime: %v\n", err)
-		return "", err
+		return err
 	}
 
-	defaultLogger.Printf("Runtime: Runtime %q sucessfully created\n", runtimeInfo.Name)
-	return container.ID(), nil
+	defaultLogger.Printf("Runtime: Runtime created: %q\n", runtimeInfo.Name)
+	return nil
+
 }
 
-func (mod runtimeModule) RuntimeDestroy(runtimeID string) error {
+func (mod runtimeModule) RuntimeDestroy(runtimeInfo *RuntimeInfo) error {
 
 	if client == nil {
 		defaultLogger.Println("Runtime: Client not available")
@@ -215,7 +221,7 @@ func (mod runtimeModule) RuntimeDestroy(runtimeID string) error {
 
 	ctx := namespaces.WithNamespace(context.Background(), defaultNamespace)
 
-	container, err := client.LoadContainer(ctx, runtimeID)
+	container, err := client.LoadContainer(ctx, runtimeInfo.Name)
 
 	if err != nil {
 		defaultLogger.Println("Runtime: client.LoadContainer")
@@ -241,11 +247,11 @@ func (mod runtimeModule) RuntimeDestroy(runtimeID string) error {
 		return err
 	}
 
-	defaultLogger.Printf("Runtime: Runtime %q sucessfully destroyed\n", runtimeID)
+	defaultLogger.Printf("Runtime: Runtime destroyed name: %q\n", runtimeInfo.Name)
 	return nil
 }
 
-func (mod runtimeModule) RuntimeExists(runtimeID string) bool {
+func (mod runtimeModule) RuntimeExists(runtimeName string) bool {
 
 	if client == nil {
 		defaultLogger.Println("Runtime: Client not available")
@@ -254,12 +260,37 @@ func (mod runtimeModule) RuntimeExists(runtimeID string) bool {
 
 	ctx := namespaces.WithNamespace(context.Background(), defaultNamespace)
 
-	_, err := client.ContainerService().Get(ctx, runtimeID)
+	_, err := client.ContainerService().Get(ctx, runtimeName)
 
 	return err == nil
 }
 
-func (mod runtimeModule) RuntimeExec(runtimeID string, taskInfo *TaskInfo) error {
+func (mod runtimeModule) RuntimeLoad(runtimeName string) (*RuntimeInfo, error) {
+
+	if client == nil {
+		defaultLogger.Println("Runtime: Client not available")
+		return nil, errors.New("Client not found")
+	}
+
+	ctx := namespaces.WithNamespace(context.Background(), defaultNamespace)
+
+	container, err := client.ContainerService().Get(ctx, runtimeName)
+
+	if err != nil {
+		defaultLogger.Printf("Runtime: Error on RuntimeLoad: %v\n", err)
+		return nil, err
+	}
+
+	runtime := &RuntimeInfo{
+		Name:         container.ID,
+		Runtime:      container.Image,
+		SnapshotName: container.SnapshotKey,
+	}
+
+	return runtime, nil
+}
+
+func (mod runtimeModule) RuntimeExec(runtimeInfo *RuntimeInfo, taskInfo *TaskInfo) error {
 
 	if client == nil {
 		defaultLogger.Println("Runtime: Client not available")
@@ -268,7 +299,7 @@ func (mod runtimeModule) RuntimeExec(runtimeID string, taskInfo *TaskInfo) error
 
 	ctx := namespaces.WithNamespace(context.Background(), defaultNamespace)
 
-	container, err := client.LoadContainer(ctx, runtimeID)
+	container, err := client.LoadContainer(ctx, runtimeInfo.Name)
 
 	if err != nil {
 		defaultLogger.Printf("Runtime: Runtime does not exits: %v\n", err)
@@ -319,11 +350,11 @@ func (mod runtimeModule) RuntimeExec(runtimeID string, taskInfo *TaskInfo) error
 	}
 
 	taskInfo.PID = process.Pid()
-
+	defaultLogger.Printf("Runtime: Process executed: %q, pID: %d\n", taskInfo.Args, taskInfo.PID)
 	return nil
 }
 
-func (mod runtimeModule) RuntimeKill(runtimeID string, taskInfo *TaskInfo, signal syscall.Signal) error {
+func (mod runtimeModule) RuntimeSignalSend(runtimeInfo *RuntimeInfo, taskInfo *TaskInfo, signal syscall.Signal) error {
 
 	if client == nil {
 		defaultLogger.Println("Runtime: Client not available")
@@ -332,7 +363,7 @@ func (mod runtimeModule) RuntimeKill(runtimeID string, taskInfo *TaskInfo, signa
 
 	ctx := namespaces.WithNamespace(context.Background(), defaultNamespace)
 
-	container, err := client.LoadContainer(ctx, runtimeID)
+	container, err := client.LoadContainer(ctx, runtimeInfo.Name)
 
 	if err != nil {
 		defaultLogger.Printf("Runtime: Runtime does not exits: %v\n", err)
@@ -361,6 +392,7 @@ func (mod runtimeModule) RuntimeKill(runtimeID string, taskInfo *TaskInfo, signa
 		return err
 	}
 
+	defaultLogger.Printf("Runtime: Signal Sent: %d, Args:%q, pid: %d\n", signal, taskInfo.Args, taskInfo.PID)
 	return nil
 }
 
@@ -379,48 +411,68 @@ func main() {
 
 	logger := log.New(logFile, "", log.LstdFlags)
 
-	test := runtimeModule{}
-	test.Initialize(logger, nil)
-	test.ImagePull("docker.io/library/redis:alpine")
-	a, _ := test.ImageList()
+	moduleTest := runtimeModule{}
+	moduleTest.Initialize(logger, nil)
+	moduleTest.ImagePull("docker.io/library/redis:alpine")
 
-	fmt.Println(a)
+	var runtimeInfo *RuntimeInfo
 
-	rInfo := &RuntimeInfo{
-		Name:         "redis-manager-test",
-		Runtime:      "docker.io/library/redis:alpine",
-		SnapshotName: "redis-manager-test-snapshot",
+	runtimeName := "redis-manager-test"
+	runtimeStack := "docker.io/library/redis:alpine"
+	runtimeSnapshot := "redis-manager-test-snapshot"
+
+	if !moduleTest.RuntimeExists(runtimeName) {
+
+		runtimeInfo = &RuntimeInfo{
+			Name:         runtimeName,
+			Runtime:      runtimeStack,
+			SnapshotName: runtimeSnapshot,
+		}
+
+		err = moduleTest.RuntimeCreate(runtimeInfo)
+
+		if err != nil {
+			fmt.Println("Error creating runtime!")
+			return
+		}
+	} else {
+
+		runtimeInfo, err = moduleTest.RuntimeLoad(runtimeName)
+
+		if err != nil {
+			fmt.Println("Error loading runtime!")
+			return
+		}
+
 	}
 
-	rID, err := test.RuntimeCreate(rInfo)
-
-	if err != nil {
-		fmt.Println("oops, something went wrong creating runtime!!")
-		return
-	}
-
-	fmt.Println(rID)
-	time.Sleep(5 * time.Second)
-
-	task := TaskInfo{
+	taskInfo := &TaskInfo{
 		Name: "command",
-		Args: []string{"/bin/ls"},
+		Args: []string{"/usr/local/bin/redis-server", "--port 7777"},
 		Cwd:  "/",
+		Env:  []string{"PYTHONPATH=/usr/bin"},
 	}
 
-	err = test.RuntimeExec(rID, &task)
+	err = moduleTest.RuntimeExec(runtimeInfo, taskInfo)
 
 	if err == nil {
-		fmt.Println(task.PID)
-		time.Sleep(5 * time.Second)
+		time.Sleep(60 * time.Second)
+		err = moduleTest.RuntimeSignalSend(runtimeInfo, taskInfo, syscall.SIGTERM)
+
+		if err != nil {
+			fmt.Println("Error sending signal to task!!")
+		} else {
+
+		}
+
 	} else {
-		fmt.Println("oops, something went wrong executing command!!")
+		fmt.Println("Error creating task")
 	}
 
-	err = test.RuntimeDestroy(rID)
+	err = moduleTest.RuntimeDestroy(runtimeInfo)
 
 	if err != nil {
-		fmt.Println("oops, something went wrong destroying runtime!!")
+		fmt.Println("Error destroying runtime!")
 		return
 	}
 
