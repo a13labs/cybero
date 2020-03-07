@@ -21,6 +21,10 @@ func (provider fileauthProvider) Version() string {
 	return "0.0.1"
 }
 
+func (provider fileauthProvider) Endpoint() string {
+	return nil
+}
+
 func (provider fileauthProvider) Authenticate(credential *types.RestAPICredentials) bool {
 	return true
 }

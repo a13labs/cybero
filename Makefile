@@ -8,9 +8,16 @@ APPS := $(foreach APP,$(APPSROOT),$(wildcard $(APP)/*))
 APPSGOFILES := $(foreach APPDIR,$(APPS),$(wildcard $(APPDIR)/*.go)) 
 
 MODULESROOT := modules
-MODULESFAMILY := $(foreach MODFAMILY,$(MODULESROOT),$(wildcard $(MODFAMILY)/*))
-MODULES := $(foreach MODULE,$(MODULESFAMILY),$(wildcard $(MODULE)/*))
-MODULESGOFILES := $(foreach MODULEDIR,$(MODULES),$(wildcard $(MODULEDIR)/*.go)) 
+
+# Server Modules
+SRVMODULESFAMILY := $(foreach SRVMODFAMILY,$(MODULESROOT),$(wildcard $(SRVMODFAMILY)/server/*))
+SRVMODULES := $(foreach SRVMODULE,$(SRVMODULESFAMILY),$(wildcard $(SRVMODULE)/*))
+SRVMODULESGOFILES := $(foreach SRVMODULEDIR,$(SRVMODULES),$(wildcard $(SRVMODULEDIR)/*.go)) 
+
+# Client Modules
+CLIMODULESFAMILY := $(foreach CLIMODFAMILY,$(MODULESROOT),$(wildcard $(CLIMODFAMILY)/server/*))
+CLIMODULES := $(foreach CLIMODULE,$(CLIMODULESFAMILY),$(wildcard $(CLIMODULE)/*))
+CLIMODULESGOFILES := $(foreach CLIMODULEDIR,$(CLIMODULES),$(wildcard $(CLIMODULEDIR)/*.go)) 
 
 # Go related variables.
 GOBASE := $(shell pwd)
@@ -79,24 +86,24 @@ clean:
 	@-rm $(GOBIN)/$(PROJECTNAME) 2> /dev/null
 	@GOPATH=$(GOPATH) GOBIN=$(GOBIN) go clean
 
-modules-build: $(MODULESGOFILES)
+server-modules-build: $(SRVMODULESGOFILES)
 
 apps-build: $(APPSGOFILES)
 
-$(MODULESGOFILES): %.go
+$(SRVMODULESGOFILES): %.go
 	echo "Building $(basename $@)"
-	GOPATH=$(GOPATH) GOBIN=$(GOBIN) go build -buildmode=plugin $(LDFLAGS) -o $(GOBIN)/$(PROJECTNAME)/modules/$(basename $(notdir $@)).so $@
+	GOPATH=$(GOPATH) GOBIN=$(GOBIN) go build -buildmode=plugin $(LDFLAGS) -o $(GOBIN)/$(PROJECTNAME)/modules/server/$(basename $(notdir $@)).so $@
 
 $(APPSGOFILES): %.go
 	echo "Building $(basename $@)"
 	GOPATH=$(GOPATH) GOBIN=$(GOBIN) go build $(LDFLAGS) -o $(GOBIN)/$(PROJECTNAME)/$(basename $(notdir $@)) $@
 
-build: modules-build apps-build
+build: server-modules-build apps-build
 
 %.go: 
 	@echo "Building...." 
 
-.PHONY: help modules-build
+.PHONY: help server-modules-build
 all: help
 help: Makefile
 	@echo

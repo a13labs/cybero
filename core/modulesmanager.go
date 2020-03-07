@@ -55,7 +55,7 @@ func (mod *ModulesManager) LoadModules() {
 		logger.Printf("ModuleManager: Checking if %q is a RestAPI handler\n", pluginFile)
 		if symModule, err := module.Lookup("CyberoRestHandler"); err == nil {
 
-			if moduleImpl, ok := symModule.(types.RestAPIModule); ok {
+			if moduleImpl, ok := symModule.(types.CyberoHandlerModule); ok {
 
 				if config, ok := cfg.Modules.Configuration[name]; ok {
 
@@ -68,7 +68,7 @@ func (mod *ModulesManager) LoadModules() {
 						}
 
 						logger.Printf("ModulesManager: Module loaded and initialized: %q, version: %q\n", moduleImpl.Name(), moduleImpl.Version())
-						mod.apiModules[name] = moduleImpl
+						mod.apiModules[moduleImpl.Endpoint()] = moduleImpl
 
 						return nil
 					}
@@ -84,7 +84,7 @@ func (mod *ModulesManager) LoadModules() {
 		logger.Printf("ModuleManager: Checking if %q is a Auth provider\n", pluginFile)
 		if symModule, err := module.Lookup("CyberoAuthProvider"); err == nil {
 
-			if moduleImpl, ok := symModule.(types.RestAPIAuthProvider); ok {
+			if moduleImpl, ok := symModule.(types.CyberoAuthModule); ok {
 
 				if config, ok := cfg.Modules.Configuration[name]; ok {
 
@@ -124,18 +124,18 @@ func (mod *ModulesManager) GetAPIModules() map[string]interface{} {
 }
 
 // GetAuthModule get an registered authentication module
-func (mod *ModulesManager) GetAuthModule(name string) (types.RestAPIAuthProvider, bool) {
+func (mod *ModulesManager) GetAuthModule(name string) (types.CyberoAuthModule, bool) {
 
 	if module, ok := mod.authModules[name]; ok {
-		return module.(types.RestAPIAuthProvider), ok
+		return module.(types.CyberoAuthModule), ok
 	}
 	return nil, false
 }
 
 // GetAPIModule get an registered rest api module
-func (mod *ModulesManager) GetAPIModule(name string) (types.RestAPIModule, bool) {
+func (mod *ModulesManager) GetAPIModule(name string) (types.CyberoHandlerModule, bool) {
 	if module, ok := mod.apiModules[name]; ok {
-		return module.(types.RestAPIModule), ok
+		return module.(types.CyberoHandlerModule), ok
 	}
 	return nil, false
 }

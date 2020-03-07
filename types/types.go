@@ -21,15 +21,28 @@ import (
 	"github.com/dgrijalva/jwt-go"
 )
 
-// RestAPIModule a Rest module interface
-type RestAPIModule interface {
-	Initialize(logger *log.Logger, config map[string]interface{}) error
+// CyberoModule the basic module interface
+type CyberoModule interface {
+	Initialize(*log.Logger, map[string]interface{}) error
 	IsInitialized() bool
 	Name() string
 	Version() string
 	Info() string
-	Help(action string) string
+}
+
+// CyberoHandlerModule implements a RestAPI
+type CyberoHandlerModule interface {
+	CyberoModule
+	Actions() map[string]interface{}
+	Help(string) string
+	Endpoint() string
 	HandleRequest(w http.ResponseWriter, r *http.Request) error
+}
+
+// CyberoAuthModule implements a RestAPI
+type CyberoAuthModule interface {
+	CyberoModule
+	Authenticate(*RestAPICredentials) bool
 }
 
 // RestAPIResponse represents a outgoing response
@@ -82,12 +95,4 @@ type RestAPICredentials struct {
 type RestAPIClaims struct {
 	Username string `json:"username"`
 	jwt.StandardClaims
-}
-
-// RestAPIAuthProvider a Rest module interface
-type RestAPIAuthProvider interface {
-	Initialize(logger *log.Logger, config map[string]interface{}) error
-	Name() string
-	Version() string
-	Authenticate(credential *RestAPICredentials) bool
 }

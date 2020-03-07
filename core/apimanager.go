@@ -36,16 +36,19 @@ var (
 	api         *APIManager
 )
 
-// listAction Send a list of available modules
-func (api *APIManager) listAction(w http.ResponseWriter, r *http.Request) error {
+func listAction(w http.ResponseWriter, r *http.Request) error {
 
 	modules := []map[string]interface{}{
 		map[string]interface{}{"name": "builtin", "version": "-"},
 	}
 
 	for _, moduleImpl := range GetModuleManager().GetAPIModules() {
-		module := moduleImpl.(types.RestAPIModule)
-		modules = append(modules, map[string]interface{}{"name": module.Name(), "version": module.Version()})
+		module := moduleImpl.(types.CyberoHandlerModule)
+		modules = append(modules, map[string]interface{}{
+			"name":     module.Name(),
+			"version":  module.Version(),
+			"endpoint": module.Endpoint(),
+		})
 	}
 
 	encoder := json.NewEncoder(w)
@@ -59,8 +62,7 @@ func (api *APIManager) listAction(w http.ResponseWriter, r *http.Request) error 
 	return nil
 }
 
-// infoAction Send information about a specific module
-func (api *APIManager) infoAction(w http.ResponseWriter, r *http.Request) error {
+func infoAction(w http.ResponseWriter, r *http.Request) error {
 
 	encoder := json.NewEncoder(w)
 
@@ -81,8 +83,7 @@ func (api *APIManager) infoAction(w http.ResponseWriter, r *http.Request) error 
 	return nil
 }
 
-// helpAction Send help about a specific module
-func (api *APIManager) helpAction(w http.ResponseWriter, r *http.Request) error {
+func helpAction(w http.ResponseWriter, r *http.Request) error {
 
 	encoder := json.NewEncoder(w)
 
@@ -117,8 +118,17 @@ func (api *APIManager) HandleRequest(w http.ResponseWriter, r *http.Request) err
 
 	logger := GetLogManager().GetLogger()
 
+	// our endpoint is /api
+	endpoint := "/" + APIEndpoint
+
+	// we should at least recieve /api/
+	if len(r.URL.Path) < len(endpoint)+1 {
+		logger.Printf("API: No module called %q\n", r.URL.Path)
+		return errors.New("No module called")
+	}
+
 	// remove /api/ from url and split
-	parts := strings.Split(r.URL.Path[len(APIEndpoint)+2:], "/")
+	parts := strings.Split(r.URL.Path[len(endpoint)+1:], "/")
 
 	if len(parts) == 0 {
 		logger.Printf("API: No module called %q\n", r.URL.Path[len(APIEndpoint)+2:])
@@ -152,9 +162,9 @@ func GetAPIManager() *APIManager {
 
 		// Setup API actions callbacks
 		api.apiActions = map[string]types.RestAPIHandler{
-			"list": api.listAction,
-			"info": api.infoAction,
-			"help": api.helpAction,
+			"list": listAction,
+			"info": infoAction,
+			"help": helpAction,
 		}
 	})
 
