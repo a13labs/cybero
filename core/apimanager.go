@@ -26,7 +26,7 @@ import (
 
 // APIManager location to find modukes
 type APIManager struct {
-	apiActions map[string]types.RestAPIHandler
+	apiActions map[string]types.CyberoHandler
 }
 
 var (
@@ -54,7 +54,7 @@ func listAction(w http.ResponseWriter, r *http.Request) error {
 	encoder := json.NewEncoder(w)
 	code, msg := 0, map[string]interface{}{"modules": modules}
 
-	encoder.Encode(types.RestAPIResponse{
+	encoder.Encode(types.CyberoResponse{
 		"Status":   code,
 		"Response": msg,
 	})
@@ -75,7 +75,7 @@ func infoAction(w http.ResponseWriter, r *http.Request) error {
 		code, msg = 0, map[string]interface{}{"Info": module.Info()}
 	}
 
-	encoder.Encode(types.RestAPIResponse{
+	encoder.Encode(types.CyberoResponse{
 		"Status":   code,
 		"Response": msg,
 	})
@@ -105,7 +105,7 @@ func helpAction(w http.ResponseWriter, r *http.Request) error {
 		code, msg = 0, map[string]interface{}{"Help": module.Help(action)}
 	}
 
-	encoder.Encode(types.RestAPIResponse{
+	encoder.Encode(types.CyberoResponse{
 		"Status":   code,
 		"Response": msg,
 	})
@@ -161,7 +161,7 @@ func GetAPIManager() *APIManager {
 		logger.Printf("APIManager: Initializing modules\n")
 
 		// Setup API actions callbacks
-		api.apiActions = map[string]types.RestAPIHandler{
+		api.apiActions = map[string]types.CyberoHandler{
 			"list": listAction,
 			"info": infoAction,
 			"help": helpAction,

@@ -24,7 +24,7 @@ import (
 
 // AuthManager the server security auth
 type AuthManager struct {
-	authActions map[string]types.RestAPIHandler
+	authActions map[string]types.CyberoHandler
 }
 
 var (
@@ -70,7 +70,7 @@ func GetAuthManager() *AuthManager {
 		auth = &AuthManager{}
 
 		// Initialize authentication callbacks maps
-		auth.authActions = map[string]types.RestAPIHandler{
+		auth.authActions = map[string]types.CyberoHandler{
 			"signin":  auth.signinAction,
 			"refresh": auth.refreshAction,
 		}

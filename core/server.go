@@ -27,14 +27,14 @@ import (
 	"time"
 )
 
-// RestAPIServer A simple RestAPI server
-type RestAPIServer struct {
-	serverEndpoints types.RestAPIEndpoints
+// CyberoServer A simple Cybero server
+type CyberoServer struct {
+	serverEndpoints types.CyberoEndpoints
 	httpServer      *http.Server
 }
 
 // Initialize Initialize a Rest server
-func (rest *RestAPIServer) Initialize() error {
+func (rest *CyberoServer) Initialize() error {
 
 	var err error
 
@@ -61,16 +61,16 @@ func (rest *RestAPIServer) Initialize() error {
 
 			// We have TLS enable, setup a secure socket, otherwise a non encrypted socket
 			if err := rest.listenTCPSocketTLS(addr, cfg.CertPEM, cfg.CertKey); err != nil {
-				logger.Printf("RestAPIServer: Failed to bind server on tcp secure socket %q: %v\n", addr, err)
+				logger.Printf("CyberoServer: Failed to bind server on tcp secure socket %q: %v\n", addr, err)
 				return err
 			}
 		} else if err := rest.listenTCPSocket(addr); err != nil {
-			logger.Printf("RestAPIServer: Failed to bind server on tcp socket %q: %v\n", addr, err)
+			logger.Printf("CyberoServer: Failed to bind server on tcp socket %q: %v\n", addr, err)
 			return err
 		}
 
 	} else {
-		logger.Printf("RestAPIServer: Invalid socket to listen %q: %v\n", socket, err)
+		logger.Printf("CyberoServer: Invalid socket to listen %q: %v\n", socket, err)
 		return err
 	}
 
@@ -84,14 +84,14 @@ func (rest *RestAPIServer) Initialize() error {
 }
 
 // APIHandler Add a new handler
-func (rest *RestAPIServer) APIHandler(url string, handler types.RestAPIHandler) {
+func (rest *CyberoServer) APIHandler(url string, handler types.CyberoHandler) {
 	if rest.serverEndpoints == nil {
-		rest.serverEndpoints = types.RestAPIEndpoints{}
+		rest.serverEndpoints = types.CyberoEndpoints{}
 	}
 	rest.serverEndpoints[url] = handler
 }
 
-func (rest *RestAPIServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (rest *CyberoServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	logger := GetLogManager().GetLogger()
 
@@ -113,14 +113,14 @@ func (rest *RestAPIServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	encoder := json.NewEncoder(w)
 	code, msg := -1, map[string]interface{}{"Error": fmt.Sprintf("Error, processing request\n")}
 
-	encoder.Encode(types.RestAPIResponse{
+	encoder.Encode(types.CyberoResponse{
 		"Status":   code,
 		"Response": msg,
 	})
 }
 
 // listenUnixSocket start API listener on a unix socket
-func (rest *RestAPIServer) listenUnixSocket(socket string) error {
+func (rest *CyberoServer) listenUnixSocket(socket string) error {
 
 	logger := GetLogManager().GetLogger()
 	addr, err := net.ResolveUnixAddr("unix", socket)
@@ -151,7 +151,7 @@ func (rest *RestAPIServer) listenUnixSocket(socket string) error {
 }
 
 // ListenTCPSocket Listen API in a TCP socket
-func (rest *RestAPIServer) listenTCPSocket(address string) error {
+func (rest *CyberoServer) listenTCPSocket(address string) error {
 
 	logger := GetLogManager().GetLogger()
 	listener, err := net.Listen("tcp", address)
@@ -175,7 +175,7 @@ func (rest *RestAPIServer) listenTCPSocket(address string) error {
 }
 
 // listenTCPSocketTLS Listen API in a TCP socket
-func (rest *RestAPIServer) listenTCPSocketTLS(address string, pemFile string, keyFile string) error {
+func (rest *CyberoServer) listenTCPSocketTLS(address string, pemFile string, keyFile string) error {
 
 	logger := GetLogManager().GetLogger()
 	cert, err := tls.LoadX509KeyPair(pemFile, keyFile)
@@ -208,7 +208,7 @@ func (rest *RestAPIServer) listenTCPSocketTLS(address string, pemFile string, ke
 }
 
 // Shutdown shutdown server
-func (rest *RestAPIServer) Shutdown() {
+func (rest *CyberoServer) Shutdown() {
 
 	logger := GetLogManager().GetLogger()
 	cfg := GetConfigManager().GetConfig()

@@ -26,7 +26,7 @@ import (
 
 // ConfigManager represents a config manager struct
 type ConfigManager struct {
-	masterConfig *types.RestAPIConfig
+	masterConfig *types.CyberoServerConfig
 	configFile   string
 }
 
@@ -39,7 +39,7 @@ func (config *ConfigManager) loadFromFile(configFile string) error {
 
 	fileDscr, err := os.Open(configFile)
 	if err != nil {
-		fmt.Printf("RestAPIServer: Error loading config file %q: %v\n", configFile, err)
+		fmt.Printf("CyberoServer: Error loading config file %q: %v\n", configFile, err)
 		return err
 	}
 	defer fileDscr.Close()
@@ -48,7 +48,7 @@ func (config *ConfigManager) loadFromFile(configFile string) error {
 
 	err = decoder.Decode(config.masterConfig)
 	if err != nil {
-		fmt.Printf("RestAPIServer: Error loading config file %q: %v\n", configFile, err)
+		fmt.Printf("CyberoServer: Error loading config file %q: %v\n", configFile, err)
 		return err
 	}
 
@@ -58,7 +58,7 @@ func (config *ConfigManager) loadFromFile(configFile string) error {
 func (config *ConfigManager) loadFormArgs() {
 
 	if config.masterConfig == nil {
-		config.masterConfig = &types.RestAPIConfig{}
+		config.masterConfig = &types.CyberoServerConfig{}
 	}
 
 	// Try to load configuration from arguments
@@ -76,7 +76,7 @@ func (config *ConfigManager) loadFormArgs() {
 }
 
 // GetConfig access to the current config manager
-func (config *ConfigManager) GetConfig() *types.RestAPIConfig {
+func (config *ConfigManager) GetConfig() *types.CyberoServerConfig {
 	return config.masterConfig
 }
 

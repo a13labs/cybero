@@ -30,7 +30,7 @@ type CyberoModule interface {
 	Info() string
 }
 
-// CyberoHandlerModule implements a RestAPI
+// CyberoHandlerModule implements a Cybero
 type CyberoHandlerModule interface {
 	CyberoModule
 	Actions() map[string]interface{}
@@ -39,60 +39,60 @@ type CyberoHandlerModule interface {
 	HandleRequest(w http.ResponseWriter, r *http.Request) error
 }
 
-// CyberoAuthModule implements a RestAPI
+// CyberoAuthModule implements a Cybero
 type CyberoAuthModule interface {
 	CyberoModule
-	Authenticate(*RestAPICredentials) bool
+	Authenticate(*CyberoCredentials) bool
 }
 
-// RestAPIResponse represents a outgoing response
-type RestAPIResponse map[string]interface{}
+// CyberoResponse represents a outgoing response
+type CyberoResponse map[string]interface{}
 
-// RestAPIHandler signature of a RestHandler callback
-type RestAPIHandler func(http.ResponseWriter, *http.Request) error
+// CyberoHandler signature of a RestHandler callback
+type CyberoHandler func(http.ResponseWriter, *http.Request) error
 
-// RestAPIEndpoints map of endpoints
-type RestAPIEndpoints map[string]RestAPIHandler
+// CyberoEndpoints map of endpoints
+type CyberoEndpoints map[string]CyberoHandler
 
-// RestAPIModuleConfig configuration of a module
-type RestAPIModuleConfig struct {
+// CyberoModuleConfig configuration of a module
+type CyberoModuleConfig struct {
 	Enabled bool                   `json:"enabled"`
 	Config  map[string]interface{} `json:"config"`
 }
 
-// RestAPIModulesConfig config part of modules
-type RestAPIModulesConfig struct {
-	Path          string                         `json:"path"`
-	Configuration map[string]RestAPIModuleConfig `json:"configs"`
+// CyberoModulesConfig config part of modules
+type CyberoModulesConfig struct {
+	Path          string                        `json:"path"`
+	Configuration map[string]CyberoModuleConfig `json:"configs"`
 }
 
-// RestAPIAuthConfig config part of authentication
-type RestAPIAuthConfig struct {
+// CyberoAuthConfig config part of authentication
+type CyberoAuthConfig struct {
 	Path     string                 `json:"path"`
 	Provider string                 `json:"provider"`
 	Config   map[string]interface{} `json:"config"`
 	Secret   []byte                 `json:"secret"`
 }
 
-// RestAPIConfig The server configuration structure
-type RestAPIConfig struct {
-	Socket  string               `json:"socket"`
-	TLS     bool                 `json:"tls"`
-	CertPEM string               `json:"certpem"`
-	CertKey string               `json:"certkey"`
-	LogFile string               `json:"logfile"`
-	Modules RestAPIModulesConfig `json:"modules"`
-	Auth    RestAPIAuthConfig    `json:"auth"`
+// CyberoServerConfig The server configuration structure
+type CyberoServerConfig struct {
+	Socket  string              `json:"socket"`
+	TLS     bool                `json:"tls"`
+	CertPEM string              `json:"certpem"`
+	CertKey string              `json:"certkey"`
+	LogFile string              `json:"logfile"`
+	Modules CyberoModulesConfig `json:"modules"`
+	Auth    CyberoAuthConfig    `json:"auth"`
 }
 
-// RestAPICredentials json signin structure
-type RestAPICredentials struct {
+// CyberoCredentials json signin structure
+type CyberoCredentials struct {
 	Password string `json:"password"`
 	Username string `json:"username"`
 }
 
-// RestAPIClaims  json claim structure
-type RestAPIClaims struct {
+// CyberoClaims  json claim structure
+type CyberoClaims struct {
 	Username string `json:"username"`
 	jwt.StandardClaims
 }

@@ -51,8 +51,8 @@ func (mod *ModulesManager) LoadModules() {
 			return nil
 		}
 
-		// Check if module is a RestAPI handler
-		logger.Printf("ModuleManager: Checking if %q is a RestAPI handler\n", pluginFile)
+		// Check if module is a Cybero handler
+		logger.Printf("ModuleManager: Checking if %q is a Cybero handler\n", pluginFile)
 		if symModule, err := module.Lookup("CyberoRestHandler"); err == nil {
 
 			if moduleImpl, ok := symModule.(types.CyberoHandlerModule); ok {
